@@ -3,7 +3,7 @@ from Utilities import *
 from collections import deque
 import numpy as np
 import datetime 
-
+import math
 
 class MotionState:
     def __init__(self, s, l, v):
@@ -20,8 +20,9 @@ class LateralState:
         self.heading = heading
         self.heading_dot = heading_dot
 
-
 class CAV(Vehicle):
+
+  
 
     def __init__(self, dt, simulation, v_des, permanent_id, lane, id, veh_state, veh_param, veh_input = VehicleInput(0, 0)):
         # we need some label to index the HDV lane, id....
@@ -30,128 +31,102 @@ class CAV(Vehicle):
         self.category = "CAV"
         self.lateral_state = LateralState(heading = veh_state.heading)
 
-        # computation time summary
-        self.control_compute_time = []
-        self.motion_plan_compute_time = []
-        self.target_compute_time = []
-
-        # target module
-        self.target_location = None
-        self.target_speed = None
-
-        # initialize motion planner configuration
-        
-
-        # initialize controller configuration
-        self.discrete_path_reference = []
-        self.discrete_speed_reference = []
-        self.control_track_point = None
-
-        # pid configuration
-        self.match_point_idx = 0
-        self.pid_dp = 0
-        self.pid_di = 0
-        self.pid_dd = 0
-
-        # pure pursuit configuration
-        self.k = 0.1
-        self.look_ahead_angle = 0
-        self.look_ahead_point = Point(2, 2)
-
-        # add temp target location and speed at the end of the segment
-        self.target_location = self.segment.end.convert_to_point()
-        self.target_speed = 10
-        self.target_heading = 0
-
-        self.trajectory_set = []
-        self.path_set = deque()
-        self.speed_set = deque()
-        self.visualization_set = []
-
-        self.path_edges = []
-        self.speed_edges = []
-
-        self.best_path = []
-        self.best_speed = []
-
-        self.dense_visualization_set = []
-
-        self.trajectory_set_with_dense_info = []
+        self.init_computation_module()
+        self.init_env_module()
+        self.init_frenet_module()
+        self.init_target_module()
+        self.init_planner_module()
+        self.init_control_module()
     
+    def add_controller(self, controller):
+        self.controller = controller
+    
+    def add_planner(self, planner):
+        self.planner = planner
 
-        self.num_trajectory_points = 500
-        # update speed trajectory reference
-        v = 20
-        # for i in range(5000):
-        #     self.discrete_speed_reference.append(v)
-        # print("v")
-        for i in range(100):
-            v += -0.02
-            self.discrete_speed_reference.append(v)
-        for i in range(100):
-            v -= 0.00
-            self.discrete_speed_reference.append(v)
-        for i in range(300):
-            self.discrete_speed_reference.append(v)
+    def add_target(self, target):
+        self.target = target
 
-        if self.segment.is_segment_straight_getter():
-            start = Point(self.segment.start.x, self.segment.start.y)
-            end = Point(self.segment.end.x, self.segment.end.y)
-            for i in range(500):
-                x = ((500 - i) * start.x + i * end.x) / 500
-                y = ((500 - i) * start.y + i * end.y) / 500
-                # print(x)
-                self.discrete_path_reference.append(Point(x, y))
-        # if segment is not straight
-        else:
-            arc_start_angle = self.segment.arc_start_angle
-            arc_end_angle = self.segment.arc_end_angle
-            arc_center = self.segment.arc_center
-            arc_radius = self.segment.arc_radius
-
-            for i in range(500):
-                angle = ((500 - i) * arc_start_angle + i * arc_end_angle) / 5000
-                rad = angle * np.pi / 180.0
-                angle_vec = Vector(np.cos(rad), np.sin(rad))
-                center_to_point_vec = angle_vec * arc_radius
-                point = Point(arc_center.x + center_to_point_vec.x, arc_center.y + center_to_point_vec.y)
-                self.discrete_path_reference.append(point)
-
-
+    # update : target, planner, controller
     def update(self):
-        
+        self.update_env()
         self.update_target()
         self.update_trajectory_reference()
         self.update_control_command()
         self.update_state()
 
+    def update_env(self):
+        self.update_surrounding_vehicles_on_road()
+
+    def lane_target_has_collision_with_traffic(self, target_point, lane_idx):
+        for veh in self.segment.vehicles[lane_idx]:
+            if distance(veh.point_location(), target_point) < 8:
+                return True
+        return False
+
+    # #TODO: Update lane idx after CAV make lane change
 
     def update_target(self):
-        self.target_location = self.point_location() + Point(150, 0)
+        # target is always in the mid lane
+        mid_lane_match_point = Point(self.point_location().x, self.segment.start.y)
+        target_location = mid_lane_match_point + self.target_movement_point
+        while (self.lane_target_has_collision_with_traffic(target_location, self.lane)):
+            target_location += Point(10, 0)
+
+        self.target_location = target_location
+        self.target_speed = 20
+        self.target_heading = 0
 
     def update_trajectory_reference(self):
-        if self.simulation.count % 10 == 0:
+        if self.simulation.count % 20 == 0:
             start_time = datetime.datetime.now()
             self.generate_trajectory_set()
-            self.select_best_path()
+            # self.select_best_path()
             # self.display_trajectory()
-
             end_time = datetime.datetime.now()
+
+            self.update_visualization_set()
+
+            self.update_discrete_path_reference()
+            self.update_discrete_speed_reference()
+
             self.motion_plan_compute_time.append((end_time - start_time).microseconds / 1000)
             print(f"Motion computation time: {(end_time - start_time).microseconds / 1000}")
 
-    def display_trajectory(self):
-        for trajectory in self.trajectory_set:
-            for i in range(len(trajectory)):
-                print(f"Trajectory at {i} is {trajectory[i]}")
+    #TODO: Update discrete path and speed references
+    def update_discrete_path_reference(self):
+        new_discrete_path_reference = []
+        for location, speed in self.best_trajectory_cartessian:
+            new_discrete_path_reference.append(location)
+        
+        if new_discrete_path_reference:
+            self.discrete_path_reference = new_discrete_path_reference
+
+
+    def update_discrete_speed_reference(self):
+        new_discrete_speed_reference = []
+        for location, speed in self.best_trajectory_cartessian:
+            new_discrete_speed_reference.append(speed)
+        
+        if new_discrete_speed_reference:
+            self.discrete_speed_reference = new_discrete_speed_reference
+
 
     def update_control_command(self):
+        # print(f"length of {len(self.discrete_path_reference)}")
+        
         start_time = datetime.datetime.now()
-        self.match_point_idx = self.find_match_point()
-        self.v_des = self.discrete_speed_reference[self.match_point_idx]
-        self.look_ahead_angle = self.find_look_ahead_angle()
-        # print(f"v_des: {self.v_des}")
-        self.longitudinal_lateral_decomposed_control()
+        if len(self.discrete_path_reference) == 0:
+            self.input.acc = 0
+            self.input.steer_angle = 0
+        else:
+            self.controller.update()
+
+        # self.match_point_idx = self.find_match_point()
+        # self.v_des = self.discrete_speed_reference[self.match_point_idx]
+        # self.look_ahead_angle = self.find_look_ahead_angle()
+        # # print(f"v_des: {self.v_des}")
+        # self.longitudinal_lateral_decomposed_control()
         end_time = datetime.datetime.now()
         self.control_compute_time.append((end_time - start_time).microseconds / 1000)
         print(f"Control computation time: {(end_time - start_time).microseconds / 1000}")
@@ -159,6 +134,19 @@ class CAV(Vehicle):
 
 
     """******************************************CAV motion trajectory Algorithm*****************************************"""
+
+    def update_surrounding_vehicles_on_road(self):
+        self.surrounding_vehicles.clear()
+        for segment in self.road.segments:
+            for lane_vehicles in segment.vehicles:
+                for vehicle in lane_vehicles:
+                    ego_point = self.point_location()
+                    veh_point = vehicle.point_location()
+                    if distance(ego_point, veh_point) <= 100 and vehicle is not self:
+                        self.surrounding_vehicles.append(vehicle)
+                        # print(f"surround vehicle includes {vehicle.lane}")
+
+
 
     def generate_trajectory_set(self):
         self.num_layers = 5
@@ -169,11 +157,7 @@ class CAV(Vehicle):
         self.vmax = 30
 
         self.generate_path_set()
-        # self.generate_speed_set()
-        # self.combine_path_speed()
-        self.update_visualization_set()
-
-
+        self.select_best_path()
 
     def select_best_trajectory(self):
         self.coordinate_with_other_CAVs()
@@ -184,102 +168,152 @@ class CAV(Vehicle):
         self.improve_path()
         self.improve_speed()
 
-    """trajectory generation"""
-    def select_best_path(self):
-        # Estimate the best path assuming speed is constant in the future short time period
-        
 
-        pass
+    """trajectory generation"""
 
     def generate_path_set(self):
         # for straight road
-        self.path_samples = [[] for _ in range(self.num_layers)]
+        # node info: (s, l, v, a, k， t)
+        #TODO: extend to curve road
+        if len(self.discrete_path_reference) > 0:
+            start_point = self.discrete_path_reference[self.match_point_idx]
+            print(f"start point is {start_point}")
+            s = 0
+            l = start_point.y - self.segment.start.y
+        else:
+            s = 0 
+            l = self.point_location().y - self.segment.start.y
+        print(f"s is {s}, l is {l}")
+        # print(f"start l is {l}")
+        self.path_root = Node(s, l, self.state.v, 0, 0)
+        self.path_nodes_vec =  [[] for _ in range(self.num_layers)]
+        self.cost = [[[0 for _ in range(self.road.num_lanes)] for _ in range(self.road.num_lanes)] for _ in range(self.num_layers)]
+        self.path_nodes = deque([self.path_root])
+        self.path_nodes_vec[0].append(self.path_root)
 
-        # add initial state at first
-        self.path_samples[0].append(Point(0,0))
-        # add middle layer states
-        # temp on straight road scenarios
         longitudinal_distance = distance(self.target_location, self.point_location())
         lateral_distance = self.road.num_lanes * self.road.lane_width
-        for i in range(1, self.num_layers - 1):
+        v_distance = self.target_speed - self.state.v
+
+        # sample nodes in the mid
+        idx = 0
+        for i in range(1, self.num_layers):
             frenet_s = longitudinal_distance / (self.num_layers - 1) * i
-            for j in range(self.road.num_lanes):
-                frenet_l = -self.road.lane_width + j * self.road.lane_width
-                self.path_samples[i].append(Point(frenet_s, frenet_l))
+            frenet_v = v_distance / (self.num_layers - 1) * i + self.state.v
+            # num_nodes_in_layer = len(path_nodes) - idx
+            cur_len = len(self.path_nodes)
+            # print(f"frenet s is {frenet_s}")
+            # add next layer nodes into deque
+            if i == self.num_layers - 1:
+                frenet_l = self.target_location.y - self.segment.start.y
+                nex_node = Node(frenet_s, frenet_l, frenet_v, 0, 0)
+                self.path_nodes_vec[i].append(nex_node)
+                self.path_nodes.append(nex_node)
+            else:
+                for j in range(self.road.num_lanes):
+                    frenet_l = (-self.road.lane_width + j * self.road.lane_width)
+                    # print(f"frenet l is {frenet_l}")
+                    nex_node = Node(frenet_s, frenet_l, frenet_v, 0, 0)
+                    self.path_nodes_vec[i].append(nex_node)
+                    self.path_nodes.append(nex_node)
 
-        # add target state at end
-        self.path_samples[-1].append(Point(longitudinal_distance, 0))
-        # print(f"longitudinal distance: {longitudinal_distance}")
 
-        self.path_edges.clear()
-        #a0 =l0, a1 = 0, 2 * a2 + 3 * a3 * s = 0; a2 + a3 * s = (l1 - l0) / s**2 ==> a3 = -2 * (l1 - l0) / s**3, a2 = 3 * (l1 - l0) / s**2
+            # construct edges according cur_node and nex_node
+            for k in range(idx, cur_len):
+                cur_node = self.path_nodes[k]
+                # path_nodes.popleft()
+                
+                for j in range(cur_len, len(self.path_nodes)):
+                    nex_node = self.path_nodes[j]
+                    
+                    collision_priority = self.num_layers - i
+                    num_samples = 20
+                    if i == 0:
+                        collision_priority = 10
+                        num_samples = 20
+                    # add child
+                    cur_node.add_child(nex_node)
+                    # add edge
+                    edge = Edge(cur_node, nex_node, num_samples)
+
+                    edge.evaluate_edge_cost(self, self.surrounding_vehicles, self.road, collision_priority)
+                    cur_node.add_edge(edge)
+
+                    cur_layer_idx = k - idx        
+                    nex_layer_idx = j - cur_len
+                    self.cost[i-1][cur_layer_idx][nex_layer_idx] = edge.get_cost()
+
+                    # print(f"cur_layer is {i-1}, cur_layer_idx is {cur_layer_idx}, next_layer_idx is {nex_layer_idx}, cost is {edge.get_cost()}")")
+            idx = cur_len
         
-        num_samples = 5
-        for i in range(self.num_layers - 1):
-            path_edges_at_layer = []
-            for start_point in self.path_samples[i]:
-                for end_point in self.path_samples[i + 1]:
-                    sample_points_at_one_edge = []
-                    s = end_point.x - start_point.x
-                    l = end_point.y - start_point.y
-                    s_polynomial = [0, 0, 3 * l / s**2, -2 * l / s**3]
-
-                    ds = s / num_samples 
-                    for j in range(num_samples):
-                        s_sample = ds * j
-                        l_sample = s_polynomial[0] + s_sample * (s_polynomial[1] + s_sample * (s_polynomial[2] + s_sample * s_polynomial[3]))
-                        sample_points_at_one_edge.append(Point(s_sample + start_point.x, l_sample + start_point.y))
-                        # print(f"{i}: {Point(s_sample, l_sample)}")
-
-                    path_edges_at_layer.append(sample_points_at_one_edge)
-            # print(f"{i}: {path_edges_at_layer}")
-            self.path_edges.append(path_edges_at_layer)
-
-        # print(len(self.path_edges))
-
-        # generate path set using breadth first search
-        self.path_set.clear()
-        self.path_set.append(self.path_samples[0].copy())
-
-        for layer in range(1, self.num_layers):
-            num_size = len(self.path_set)
-            for i in range(num_size):
-                path_list = self.path_set[0].copy()
-                self.path_set.popleft()
-                for path in self.path_samples[layer]:
-                    new_path_list = path_list[:]
-                    new_path_list.append(path)
-                    self.path_set.append(new_path_list)
-
-        # connect edges using polynomials
-        # print("path stop")
-
-
     def select_best_path(self):
-        
-        pass
+        self.dp = [[0 for _ in range(self.road.num_lanes)] for _ in range(self.num_layers)]
+        prev_best_trajectory = self.best_trajectory
+        self.best_trajectory.clear()
+        self.best_trajectory_cartessian.clear()
+
+        for i in range(1, self.num_layers):
+            num_j = self.road.num_lanes if i < self.num_layers - 1 else 1
+            for j in range(num_j):
+                num_k = self.road.num_lanes if i > 1 else 1
+                self.dp[i][j] = min((self.dp[i-1][k] + self.cost[i-1][k][j]) for k in range(num_k))
+
+        # self.print_dp()
+        # print(f"best trajectory cost is {self.dp[-1][0]}")
+        # self.print_cost(0)
+
+        cur_trajectory_cost = self.dp[-1][0]
+        j = 0 # this is the cur_trajectory_cost idx at the final layer
+        for i in range(self.num_layers - 1, 0, -1):
+            num_k = self.road.num_lanes if i > 1 else 1
+            for k in range(num_k):
+                if abs(self.dp[i-1][k] + self.cost[i-1][k][j] - cur_trajectory_cost) < 0.001: 
+                    # print(f"best node i is {i}, k is {k}")
+                    self.best_trajectory.appendleft((self.path_nodes_vec[i-1][k], self.path_nodes_vec[i-1][k].edges[j], (i-1, k)))
+                    cur_trajectory_cost -= self.cost[i-1][k][j] # update cost
+                    j = k # update j
+                    break
+    
+        for main_node, edge, idx in self.best_trajectory:
+            for sample in edge.samples:
+                sl_point = Point(sample.s, sample.l)
+                cartessian_point = sl_point + Point(self.point_location().x, self.segment.start.y)
+                self.best_trajectory_cartessian.append((cartessian_point, sample.v))
+
+        # some times fail because the target point is in the static obstacle
+        # assert(cur_trajectory_cost == 0)
+
 
     def update_visualization_set(self):
         self.visualization_set.clear()
         self.dense_visualization_set.clear()
 
-        for layer in self.path_samples:
-            for sample in layer:
-                point = sample + self.point_location()
+        for layer in self.path_nodes_vec:
+            for node in layer:
+                sample = Point(node.s, node.l)
+                point = sample + Point(self.point_location().x, self.segment.start.y)
                 self.visualization_set.append(point)
 
-        for path_samples_at_layer in self.path_edges:
-            # print(len(path_samples_at_layer))
-            for sample_points_at_one_edge in path_samples_at_layer:
-                # print(len(sample_points_at_one_edge))
-                for sample in sample_points_at_one_edge:
-                    point = sample + self.point_location()
-                    self.dense_visualization_set.append(point)
+        # traverse the path nodes graph
+        path_nodes = deque([self.path_root])
+        # idx = 0
+        while path_nodes:
+            # print(f"node {idx} is visited")
 
-        # for dense_trajectory in self.trajectory_set_with_dense_info:
-        #     for state in dense_trajectory:
-        #         point = Point(state[0], state[1]) + self.point_location()
-        #         self.dense_visualization_set.append(point)
+            cur_node = path_nodes[0]
+            path_nodes.popleft()
+
+            for edge in cur_node.edges:
+                for node in edge.samples:
+                    sl_point = Point(node.s, node.l)
+                    self.dense_visualization_set.append(sl_point + Point(self.point_location().x, self.segment.start.y))
+            
+            for child in cur_node.children:
+                # print(f"child of node {idx} is visited")
+                path_nodes.append(child)
+
+            # idx += 1
+
 
     def generate_speed_set(self):
         self.speed_samples = [[] for _ in range(self.num_layers)]
@@ -313,64 +347,6 @@ class CAV(Vehicle):
 
         # print("speed stop")
 
-    def combine_path_speed(self):
-        # assume the speed will stay constant and evaluate path?
-
-        self.trajectory_set.clear()
-        for paths in self.path_set:
-            for speeds in self.speed_set:
-                trajectory = []
-                for i in range(len(paths)):
-                    s = paths[i].x
-                    l = paths[i].y
-                    v = speeds[i]
-                    motion_state = MotionState(s, l, v)
-                    trajectory.append(motion_state)
-                self.add_valid_trajectory(trajectory)
-        
-        self.generate_trajectory_set_with_dense_info()
-        # print("trajectory stop")
-
-    def generate_trajectory_set_with_dense_info(self):
-        # may optimize
-        for trajectory in self.trajectory_set:
-            dense_trajectory = []
-            t = 0
-            for i in range(len(trajectory) - 1):
-                start_motion_state = trajectory[i]
-                end_motion_state = trajectory[i + 1]
-                l0 = start_motion_state.l
-                l1 = end_motion_state.l
-                s = end_motion_state.s - start_motion_state.s
-                v0 = start_motion_state.v
-                v1 = end_motion_state.v 
-                #a0 =l0, a1 = 0, 2 * a2 + 3 * a3 * s = 0; a2 + a3 * s = (l1 - l0) / s**2 ==> a3 = -2 * (l1 - l0) / s**3, a2 = 3 * (l1 - l0) / s**2
-                s_polynomial = [l0, 0, 3 * (l1 - l0) / s**2, -2 * (l1 - l0) / s**3]
-
-                # assume uniform acceleration
-                num_samples = 10
-                ds = s / num_samples 
-                dv = (v1 - v0) / num_samples
-                for j in range(num_samples):
-                    s_sample = ds * j
-                    l_sample = s_polynomial[0] + s_sample * (s_polynomial[1] + s_sample * (s_polynomial[2] + s_sample * s_polynomial[3]))
-                    v_sample = dv * j + v0
-                    a_sample = dv
-                    t_sample = t
-
-                    v_avg = v_sample + 0.5 * dv
-                    if v_avg <= 0.01:
-                        v_avg += 0.1
-                    dt = ds / v_avg
-                    t += dt
-
-                    dense_trajectory.append([s_sample, l_sample, v_sample, a_sample, t_sample])
-
-            self.trajectory_set_with_dense_info.append(dense_trajectory)
-
-
-    def add_valid_trajectory(self, trajectory):
-        self.trajectory_set.append(trajectory)
 
 
     """select trajectory"""
@@ -395,89 +371,32 @@ class CAV(Vehicle):
 
 
 
-    """******************************************CAV Control Algorithm*****************************************"""
-    def find_match_point(self):
-        # to do: find the match point of the trajectory reference and use controller to track the speed of it
-        idx = 0
-        min_distance = 100000
-        for i in range(self.num_trajectory_points):
-            ego_point = self.point_location()
-            point = self.discrete_path_reference[i]
-            dis = distance(ego_point, point)
-            if dis < min_distance:
-                min_distance = dis
-                idx = i
-        return idx
-
-    def find_look_ahead_angle(self):
-
-        look_ahead_point = self.find_look_ahead_point()
-        ego_point = self.point_location()
-
-        look_ahead_vec = Vector(look_ahead_point.x - ego_point.x, look_ahead_point.y - ego_point.y)
-
-        heading_rad = self.state.heading / 180 * np.pi
-        heading_vec = Vector(np.cos(heading_rad), np.sin(heading_rad))
-
-        return angle_between_vectors_with_sign(heading_vec, look_ahead_vec)
-
-    def find_look_ahead_point(self):
-        look_ahead_distance = self.k * self.state.v
-        ego_point = self.point_location()
-
-        look_ahead_point_idx = self.match_point_idx
-        min_distance = 10000
-        # search the min distance point in the trajectory path points
-        for i in range(self.match_point_idx, self.num_trajectory_points):
-            point = self.discrete_path_reference[i]
-            dis = distance(point, ego_point)
-            if np.abs(dis - look_ahead_distance) < min_distance:
-                min_distance = np.abs(dis - look_ahead_distance)
-                look_ahead_point_idx = i
-
-        self.look_ahead_point = self.discrete_path_reference[look_ahead_point_idx]
-        return self.discrete_path_reference[look_ahead_point_idx]
-
-
-    def longitudinal_lateral_decomposed_control(self):
-        self.input.acc = self.longitudinal_control()
-        self.input.steer_angle = self.lateral_control()
-
-    def longitudinal_control(self):
-        kp = 0.2
-        ki = 0.05
-        kd = 0.01
-
-        self.pid_dd = (self.pid_dp - (self.v_des - self.state.v)) / self.dt
-        self.pid_dp = self.v_des - self.state.v
-        self.pid_di += self.pid_dp * self.dt
-
-        # clear the accummulated pi term every 5 seconds
-        if self.simulation.count % 500 == 0:
-            self.pid_di = 0
-        
-        # print(f"pid_dp is {self.pid_dp}")
-        # print(f"pid_dd is {self.pid_dd}")
-        # print(f"pid_di is {self.pid_di}")
-
-        return kp * self.pid_dp + ki * self.pid_di + kd * self.pid_dd
-        
-
-    def lateral_control(self):
-        # print(f"angle: {self.look_ahead_angle}")
-        # print(f"distance: {self.k * self.state.v}")
-        # print(f"turn angle: {np.arctan2(2 * self.param.length * self.look_ahead_angle, self.k * self.state.v)}")
-        if self.state.v <= 0.001:
-            return 0
-        return np.arctan2(2 * self.param.length * self.look_ahead_angle, self.k * self.state.v) * 180 / np.pi
-
 
     """************************************CAV Simulated Physical Plant **********************************************"""
     
     def update_state(self):
-        self.update_lateral_state()
-        self.update_longitudinal_state()
+        print(f"cav target speed is {self.target_speed}, desired speed is {self.v_des}")
+        print(f"cav speed is {self.state.v}, acc is {self.input.acc}, heading is {self.state.heading}, steer is {self.input.steer_angle}")
+        self.update_kinematic()
+        # if self.state.v <= 5:
+        #     self.state.v = 0
+        # else:
+        #     self.update_lateral_state()
+        #     self.update_longitudinal_state()
+        # print(f"cav state: {self}")
 
+    def update_motion(self):
+        pass
+    
+    def update_kinematic(self):
+        # if self.state.v <= 
+        phi = self.state.heading / 180 * np.pi
+        self.state.x += self.state.v * self.dt * np.cos(phi)
+        self.state.y += self.state.v * self.dt * np.sin(phi)
+        
+        steer_angle = self.input.steer_angle / 180 * np.pi
+        self.state.heading += (self.state.v * np.tan(steer_angle) / self.param.length * self.dt) * 180 / np.pi
+        self.state.v += self.input.acc * self.dt
 
     def update_lateral_state(self):
         """Vehicle plant simulated by dynamic bicycle model"""
@@ -497,7 +416,7 @@ class CAV(Vehicle):
         v = self.state.v
 
         # the dynamics
-        if v > 1:
+        if v >= 2:
             d_beta = -(cf + cr) / (m * v) * beta + ((cr * lr - cf * lf) / (m * v**2) - 1) * d_heading + cf / (m * v) * delta
             dd_heading = - (cr * lr - cf * lf) / Iz * beta - (cr * lr**2 + cf * lf**2) / (Iz * v) * d_heading + cf * lf / Iz * delta
         else:
@@ -526,3 +445,219 @@ class CAV(Vehicle):
         acc = acc_des - (ca * v**2 + cr * v) / m
         self.state.v += self.dt * acc
 
+    """************************************Initialization Modules **********************************************"""
+
+    def init_computation_module(self):
+        # computation time summary
+        self.control_compute_time = []
+        self.motion_plan_compute_time = []
+        self.target_compute_time = []
+
+    def init_env_module(self):
+        # surrounding vehicle module
+        self.surrounding_vehicles = []
+
+    def init_target_module(self):
+        # target module
+        self.target_location = None
+        self.target_speed = None
+        self.target_movement_point = Point(100, 0)
+
+        # add temp target location and speed at the end of the segment
+        self.target_location = self.segment.end.convert_to_point()
+        self.target_speed = 10
+        self.target_heading = 0
+
+    def init_planner_module(self):
+        # initialize motion planner configuration
+        # initialize controller configuration
+        # self.discrete_path_reference = []
+        # self.discrete_speed_reference = []
+        self.control_track_point = None
+
+        self.trajectory_set = []
+        self.best_trajectory_idx = deque()
+        self.best_trajectory = deque()
+        self.path_set = deque()
+        self.speed_set = deque()
+        self.visualization_set = []
+        self.best_trajectory_cartessian = []
+
+        self.path_edges = []
+        self.speed_edges = []
+
+        self.best_path = []
+        self.best_speed = []
+
+        self.dense_visualization_set = []
+
+        self.trajectory_set_with_dense_info = []
+
+    def init_control_module(self):
+        
+        # pid configuration
+        self.match_point_idx = 0
+        self.pid_dp = 0
+        self.pid_di = 0
+        self.pid_dd = 0
+
+        # pure pursuit configuration
+        self.k = 0.5
+        self.look_ahead_angle = 0
+        self.look_ahead_point = Point(2, 2)
+
+    """Support functions"""
+
+    def print_dp(self):
+        for i in range(len(self.dp)):
+            print()
+            for j in range(len(self.dp[i])):
+                print(self.dp[i][j], end=",")
+            print()
+
+    def print_cost(self, layer):
+        for j in range(self.road.num_lanes):
+            print()
+            for k in range(self.road.num_lanes):
+                print(self.cost[layer][j][k], end=",")
+            print()
+
+    def init_frenet_module(self):
+        self.reference_line = []
+        self.num_trajectory_points = 500
+        self.discrete_speed_reference = []
+        self.discrete_path_reference = []
+
+        # v = 20
+        # for i in range(100):
+        #     v += -0.02
+        #     self.discrete_speed_reference.append(v)
+        # for i in range(100):
+        #     v -= 0.00
+        #     self.discrete_speed_reference.append(v)
+        # for i in range(300):
+        #     self.discrete_speed_reference.append(v)
+
+        if self.segment.is_segment_straight_getter():
+            start = Point(self.segment.start.x, self.segment.start.y)
+            end = Point(self.segment.end.x, self.segment.end.y)
+            for i in range(500):
+                x = ((500 - i) * start.x + i * end.x) / 500
+                y = ((500 - i) * start.y + i * end.y) / 500
+                # print(x)
+                self.reference_line.append(Point(x, y))
+        # if segment is not straight
+        else:
+            arc_start_angle = self.segment.arc_start_angle
+            arc_end_angle = self.segment.arc_end_angle
+            arc_center = self.segment.arc_center
+            arc_radius = self.segment.arc_radius
+
+            for i in range(500):
+                angle = ((500 - i) * arc_start_angle + i * arc_end_angle) / 5000
+                rad = angle * np.pi / 180.0
+                angle_vec = Vector(np.cos(rad), np.sin(rad))
+                center_to_point_vec = angle_vec * arc_radius
+                point = Point(arc_center.x + center_to_point_vec.x, arc_center.y + center_to_point_vec.y)
+                self.reference_line.append(point)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # """******************************************CAV Control Algorithm*****************************************"""
+    # def find_match_point(self):
+    #     # TODO: find the match point of the trajectory reference and use controller to track the speed of it
+    #     idx = 0
+    #     min_distance = 100000
+    #     for i in range(len(self.discrete_path_reference)):
+    #         ego_point = self.point_location()
+    #         point = self.discrete_path_reference[i]
+    #         dis = distance(ego_point, point)
+    #         if dis < min_distance:
+    #             min_distance = dis
+    #             idx = i
+    #     return idx
+
+    # def find_look_ahead_angle(self):
+
+    #     look_ahead_point = self.find_look_ahead_point()
+    #     ego_point = self.point_location()
+
+    #     look_ahead_vec = Vector(look_ahead_point.x - ego_point.x, look_ahead_point.y - ego_point.y)
+
+    #     heading_rad = self.state.heading / 180 * np.pi
+    #     heading_vec = Vector(np.cos(heading_rad), np.sin(heading_rad))
+
+    #     return angle_between_vectors_with_sign(heading_vec, look_ahead_vec)
+
+    # def find_look_ahead_point(self):
+    #     look_ahead_distance = self.k * self.state.v
+    #     ego_point = self.point_location()
+
+    #     look_ahead_point_idx = self.match_point_idx
+    #     min_distance = 10000
+    #     # search the min distance point in the trajectory path points
+    #     for i in range(self.match_point_idx ,len(self.discrete_path_reference)):
+    #         point = self.discrete_path_reference[i]
+    #         dis = distance(point, ego_point)
+    #         if np.abs(dis - look_ahead_distance) < min_distance:
+    #             min_distance = np.abs(dis - look_ahead_distance)
+    #             look_ahead_point_idx = i
+
+    #     self.look_ahead_point = self.discrete_path_reference[look_ahead_point_idx]
+    #     return self.discrete_path_reference[look_ahead_point_idx]
+
+
+    # def longitudinal_lateral_decomposed_control(self):
+    #     self.input.acc = self.longitudinal_control()
+    #     self.input.steer_angle = self.lateral_control()
+
+    # def longitudinal_control(self):
+    #     kp = 0.2
+    #     ki = 0.05
+    #     kd = 0.01
+
+    #     self.pid_dd = (self.pid_dp - (self.v_des - self.state.v)) / self.dt
+    #     self.pid_dp = self.v_des - self.state.v
+    #     self.pid_di += self.pid_dp * self.dt
+
+    #     # clear the accummulated pi term every 5 seconds
+    #     if self.simulation.count % 500 == 0:
+    #         self.pid_di = 0
+        
+    #     # print(f"pid_dp is {self.pid_dp}")
+    #     # print(f"pid_dd is {self.pid_dd}")
+    #     # print(f"pid_di is {self.pid_di}")
+
+    #     return kp * self.pid_dp + ki * self.pid_di + kd * self.pid_dd
+        
+
+    # def lateral_control(self):
+    #     # print(f"angle: {self.look_ahead_angle}")
+    #     # print(f"distance: {self.k * self.state.v}")
+    #     # print(f"turn angle: {np.arctan2(2 * self.param.length * self.look_ahead_angle, self.k * self.state.v)}")
+    #     if self.state.v <= 0.001:
+    #         return 0
+    #     # print(f"look ahead angle is {self.look_ahead_angle}, look ahead point is {self.look_ahead_point}")
+    #     if math.isnan(self.look_ahead_angle):
+    #         return 0
+    #     return np.arctan2(2 * self.param.length * self.look_ahead_angle, self.k * self.state.v) * 180 / np.pi

@@ -151,8 +151,9 @@ class Visualizer:
         for vehicles_in_lane in segment.vehicles:
             for vehicle in vehicles_in_lane:
                 if vehicle.category == "CAV":
-                    self.draw_trajectory_reference(vehicle, self.RED)
-                    self.draw_path_samples(vehicle, self.BLUE)
+                    # self.draw_reference_line(vehicle, self.RED)
+                    # self.draw_path_samples(vehicle, self.BLUE)
+                    self.draw_best_trajectry(vehicle, self.RED)
 
         for vehicles_in_lane in segment.vehicles:
             for vehicle in vehicles_in_lane:
@@ -169,7 +170,7 @@ class Visualizer:
 
     def draw_CAV(self, cav):
         """Draw one CAV function"""
-        # self.draw_trajectory_reference(cav, self.GREEN)
+        # self.draw_reference_line(cav, self.GREEN)
         self.draw_vehicle(cav, self.RED)
         
         
@@ -189,7 +190,11 @@ class Visualizer:
 
         self.rotated_box(pos, size, angle, color=color)   
 
-    def draw_trajectory_reference(self, cav, color = BLACK):
+    def draw_best_trajectry(self, cav, color = RED):
+        for point, speed in cav.best_trajectory_cartessian:
+            self.draw_circle(point.x, point.y, 0.5, True, color)
+
+    def draw_reference_line(self, cav, color = BLACK):
         for point in cav.discrete_path_reference:
            self.draw_circle(point.x, point.y, 0.2, True, color)
 
@@ -197,6 +202,9 @@ class Visualizer:
         self.draw_circle(look_ahead_point.x, look_ahead_point.y, 0.5, True, self.BLUE)
 
     def draw_path_samples(self, cav, color = BLACK):
+
+        # for point in cav.discrete_path_reference:
+        #     self.draw_circle(point.x, point.y, 1, True, color)
         for point in cav.visualization_set:
             self.draw_circle(point.x, point.y, 1, True, color)
         
@@ -322,8 +330,12 @@ class Visualizer:
 
     def convert(self, x, y=None):
         """Convert function to enable zoom in / zoom out"""
+
+
         if isinstance(x, list) or isinstance(x, tuple):
             return [self.convert(e[0], e[1]) for e in x]
+
+        # print(f"convert function, x: {x}, y: {y}; offset: ({self.offset[0]},{self.offset[1]}); zoom: {self.zoom}")
         return (
             int(self.width/2+(x + self.offset[0])*self.zoom), 
             int(self.height/2+(y + self.offset[1])*self.zoom),       

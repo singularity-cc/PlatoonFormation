@@ -54,6 +54,13 @@ class Road:
                 for vehicle in lane:
                     self.energy_consumption += vehicle.energy_consumption
 
+    def in_same_lane(self, point1, point2):
+        # TODO: Extend the function to more road geometry
+        # for straight road, y is constant
+        if abs(point1.y - point2.y) < self.lane_width / 2:
+            return True
+        return False
+
 
 
 

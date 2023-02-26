@@ -50,9 +50,12 @@ def main():
     #     traffic.init_vehicle()
     # print(traffic.vehicles)
 
+    single_cav_stactic_obstacles = 0
+    single_cav_dynamic_obstacles = 1
+
     sim = Simulation() #road, traffic
     sim.create_road(waypoints, init_heading=0, num_lanes = 3, road_width = 4)
-    sim.create_generator()
+    sim.create_generator(0)
     
 
     visualizer = Visualizer(sim)

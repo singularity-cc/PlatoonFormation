@@ -46,9 +46,9 @@ class Simulation:
         """Create one single road"""
         self.road = Road(waypoints, init_heading, num_lanes, road_width)
     
-    def create_generator(self):
+    def create_generator(self, mode = 0):
         """Create a traffic generator"""
-        self.generator = Generator(self, dt = self.dt)
+        self.generator = Generator(self, dt = self.dt, mode = mode)
 
     def update(self):
         """Update the simulation"""

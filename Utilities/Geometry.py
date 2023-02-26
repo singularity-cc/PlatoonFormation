@@ -30,6 +30,10 @@ class Vector:
         self.x = x
         self.y = y
 
+    def __mul__(self, scaler):
+        return Vector(scaler * self.x, scaler * self.y)
+
+
     def is_empty(self):
         return self.x == 0 and self.y == 0
 
@@ -93,7 +97,10 @@ class Vector:
         return f"{self.x}, {self.y}"
 
 def angle_between_vectors(vec1, vec2):
-    # to do: cos(theta) = a ' b / (|a| * |b|) 
+    # to do: cos(theta) = a ' b / (|a| * |b|)
+    # print(f"angle between vec1: {vec1} and vec2: {vec2}")
+    if vec1.length() == 0 or vec2.length() == 0:
+        return 0.0
     return np.arccos(vec1.inner_product(vec2) / (vec1.length() * vec2.length()))
 
 def angle_between_vectors_with_sign(start, end):

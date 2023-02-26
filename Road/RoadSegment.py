@@ -51,6 +51,7 @@ class Segment:
         for vehicles_in_lane in self.vehicles:
             for vehicle in vehicles_in_lane:
                 # print("vehicle in segment is updated")
+                # print(f"vehicle is registered, id is {vehicle.lane}")
                 vehicle.update()
 
     def remove_vehicle(self, vehicle):
@@ -78,7 +79,8 @@ class Segment:
         self.add_vehicle(vehicle)
         self.reorganize_vehicles_in_lane(original_lane)
         self.reorganize_vehicles_in_lane(vehicle.lane)
-        
+    
+    
     """****************************************** Function to initialize a segment  **********************************************************"""
 
     def init_arc_segment(self):
