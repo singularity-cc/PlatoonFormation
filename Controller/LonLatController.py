@@ -107,9 +107,9 @@ class LonLatController:
         if self.cav.simulation.count % 250 == 0:
             self.pid_di = 0
         
-        print(f"pid_dp is {self.pid_dp}")
-        print(f"pid_dd is {self.pid_dd}")
-        print(f"pid_di is {self.pid_di}")
+        # print(f"pid_dp is {self.pid_dp}")
+        # print(f"pid_dd is {self.pid_dd}")
+        # print(f"pid_di is {self.pid_di}")
 
         acc = kp * self.pid_dp + ki * self.pid_di + kd * self.pid_dd
         # print(f"acc is {acc}")

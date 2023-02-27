@@ -34,15 +34,17 @@ class Edge:
         v_e = self.end.v
         a_s = self.start.a
         a_e = self.end.a
+        t_s = self.start.t
+        t_e = self.end.t
 
-        
         for i in range(self.num_samples):
             s_sample = self.curve.duration() / self.num_samples * i # consider s0 = 0
             l_sample = self.curve.compute(order=0, length=s_sample) #
-            v_sample = (v_e * i + (5 - i) * v_s) / 5.0
-            a_sample = (a_e * i + (5 - i) * a_s) / 5.0
+            v_sample = (v_e * i + (self.num_samples - i) * v_s) / self.num_samples
+            a_sample = (a_e * i + (self.num_samples - i) * a_s) / self.num_samples
             k_sample = self.curve.compute(order=1, length=s_sample)
-            self.samples.append(Node(s_sample + self.start.s, l_sample, v_sample, a_sample, k_sample))
+            t_sample = (t_s * i + (self.num_samples - i) * t_e) / self.num_samples
+            self.samples.append(Node(s_sample + self.start.s, l_sample, v_sample, a_sample, k_sample, t_sample))
             # print(f"sample node is generated at {s_sample}, {l_sample}")
     
     def evaluate_edge_cost(self, cav, obstacles, road, collision_priority):
@@ -59,11 +61,16 @@ class Edge:
     def compute_collision_cost(self, ego_point, obstacles, road, collision_priority):
         reference_point = Point(ego_point.x, road.segments[0].start.y) # This only works for straight road
         cost = 0
-        for obstacle in obstacles:
-            obs_point = obstacle.point_location()
-            for sample in self.samples:
-                sample_point = reference_point + Point(sample.s, sample.l)
-                cost += self.calculate_collision_cost(sample_point, obs_point, collision_priority)
+        for sample in self.samples:
+            sample_point = reference_point + Point(sample.s, sample.l)
+            time = sample.t
+            for obstacle in obstacles:
+                cur_obs_point = obstacle.point_location()
+                future_obs_point = cur_obs_point + Point(time * obstacle.state.v, 0)
+                if obstacle.category == "CAV":
+                    cost += self.calculate_collision_cost(sample_point, future_obs_point, collision_priority + 2)
+                else:
+                    cost += self.calculate_collision_cost(sample_point, future_obs_point, collision_priority)
         return cost
 
     def compute_discomfort_cost(self):
@@ -78,7 +85,7 @@ class Edge:
         cost = 0
         for sample in self.samples:
             target_lane_offset = abs(sample.l - (cav.target_location.y - road.segments[0].start.y))
-        return 10 * target_lane_offset * target_lane_offset
+        return 100 * target_lane_offset * target_lane_offset
 
     def compute_center_lane_offset_cost(self, road):
         cost = 0
@@ -106,9 +113,30 @@ class Edge:
 
     """Support functions"""
     def calculate_collision_cost(self, sample_point, obs_point, collision_priority):
+        if sample_point.x > obs_point.x + 10:
+            return 0
+        # if sample_point.x < obs_point.x + 40:
+        #     return 0
+
         collision_cost = 0
         dis_min = 3
-        M1 = 10000
+        if collision_priority == 1:
+            M1 = 10000
+            w1 = 10
+        elif collision_priority == 2:
+            M1 = 3000
+            w1 = 5
+        elif collision_priority == 3:
+            M1 = 1000
+            w1 = 3
+        elif collision_priority == -1:
+            M1 = 0
+            w1 = 0
+        else:
+            M1 = 1
+            w1 = 1
+        
+
         lam_static = 1
 
         radius = 1.7
@@ -124,9 +152,9 @@ class Edge:
             for obs_center in obstacle_circle_centers:
                 dis = distance(ego_center, obs_center)
                 if dis <= 2 * radius:
-                    collision_cost += M1 * collision_priority
+                    collision_cost += M1
                 else:
-                    collision_cost += 10 * np.exp(- 1 / lam_static * dis) * collision_priority
+                    collision_cost += w1 * np.exp(- 1 / lam_static * dis)
         return collision_cost
 
     def generate_curve(self, order):
@@ -150,13 +178,14 @@ class Edge:
         
 
 class Node:
-    def __init__(self, s, l, v, a, k):
-        self.node = (s, l, v, a, k)
+    def __init__(self, s, l, v, a, k, t):
+        self.node = (s, l, v, a, k, t)
         self.s = s
         self.l = l
         self.v = v
         self.a = a
         self.k = k
+        self.t = t
         self.edges = []
         self.children = []
 

@@ -25,6 +25,7 @@ class Visualizer:
         self.offset = (0, 0)
         self.mouse_last = (0, 0)
         self.mouse_down = False
+        self.camera_on = False
         self.dt = simulator.dt
         self.fps = int(1.0 / self.dt)
 
@@ -75,6 +76,12 @@ class Visualizer:
                 pygame.image.save(self.window, "screenshot.jpg")
             elif event.key == pygame.K_r:
                 self.simulator.output_record_data_as_excel()
+            elif event.key == pygame.K_c:
+                if self.camera_on == False and self.simulator.platoon.cavs:
+                    self.camera_on = True
+                else:
+                    self.camera_on = False
+
 
         # Handle mouse events
         elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -106,6 +113,16 @@ class Visualizer:
         self.window.fill(self.WHITE)
         """Update the simulation"""
         self.simulator.update()
+
+        # update camera offset
+        # TODO: Refactor the code
+        if self.camera_on:
+            # camera offset
+            camera = self.simulator.platoon.cavs[0].point_location()
+            # camera = (head_cav_pos.x, head_cav_pos.y)
+            self.offset = (-camera.x, -camera.y)
+
+
         """Draw the updated simulation"""
         self.draw()
         """Display the updated simulation"""
@@ -153,6 +170,7 @@ class Visualizer:
                 if vehicle.category == "CAV":
                     # self.draw_reference_line(vehicle, self.RED)
                     # self.draw_path_samples(vehicle, self.BLUE)
+                    self.draw_target(vehicle, self.BLUE)
                     self.draw_best_trajectry(vehicle, self.RED)
 
         for vehicles_in_lane in segment.vehicles:
@@ -190,11 +208,24 @@ class Visualizer:
 
         self.rotated_box(pos, size, angle, color=color)   
 
+    ##### Draw CAV target and motion trajectory
+    def draw_target(self, cav, color = BLUE):
+        if cav.is_platooning == 2:
+            return
+
+        self.draw_circle(cav.target_location.x, cav.target_location.y, 1, True, color)
+
     def draw_best_trajectry(self, cav, color = RED):
+        if cav.is_platooning == 2:
+            return 
+
         for point, speed in cav.best_trajectory_cartessian:
             self.draw_circle(point.x, point.y, 0.5, True, color)
 
     def draw_reference_line(self, cav, color = BLACK):
+        if cav.is_platooning == 2:
+            return
+
         for point in cav.discrete_path_reference:
            self.draw_circle(point.x, point.y, 0.2, True, color)
 
@@ -202,7 +233,8 @@ class Visualizer:
         self.draw_circle(look_ahead_point.x, look_ahead_point.y, 0.5, True, self.BLUE)
 
     def draw_path_samples(self, cav, color = BLACK):
-
+        if cav.is_platooning == 2:
+            return
         # for point in cav.discrete_path_reference:
         #     self.draw_circle(point.x, point.y, 1, True, color)
         for point in cav.visualization_set:
@@ -214,7 +246,7 @@ class Visualizer:
         for point in cav.dense_visualization_set:
             self.draw_circle(point.x, point.y, 0.6, True, self.BLACK)
 
-        self.draw_circle(cav.target_location.x, cav.target_location.y, 1, True, self.RED)
+        
 
     """****************************************** Support Functions for Draw Road Functions  **********************************************************"""
 
@@ -363,59 +395,3 @@ class Visualizer:
 
 
 
-
-
-
-
-
-
-
-
-
-
-                # gfxdraw.line(self.window, 100, 100, 300, 300, self.RED)
-        # gfxdraw.bezier(self.window, [(100, 700), (300, 700), (500, 700)], 4, self.BLACK)
-        # gfxdraw.bezier(self.window, [(500, 700), (1000, 700), (1000, 400)], 4, self.BLACK)
-        # gfxdraw.bezier(self.window, [(1000, 400), (1000, 200), (500, 200)], 4, self.BLACK)
-
-        # gfxdraw.box(self.window, (100, 700, 600, 30), self.LIGHTBLUE)
-        # gfxdraw.line(self.window, 100, 700, 800, 700, self.BLACK)
-        # gfxdraw.line(self.window, 100, 720, 800, 720, self.BLACK)
-        # gfxdraw.line(self.window, 100, 740, 800, 740, self.BLACK)
-        # gfxdraw.line(self.window, 100, 760, 800, 760, self.BLACK)
-
-        # circle = (700, 450, 250)
-        # gfxdraw.filled_circle(self.window, 700, 450, 280, self.LIGHTBLUE)
-
-        # for r in range(250, 280):
-        #     gfxdraw.arc(self.window, 700, 450, r, -90, 90, self.LIGHTBLUE)
-
-        # start_angle = cur_angle = -90
-        # end_angle = 90
-        # while cur_angle <= end_angle:
-        #     gfxdraw.box(self.window, (100, 700, 600, 30), self.LIGHTBLUE)
-        # draw.line(self.window, self.RED, (200, 200), (500, 500), width = 10)
-        # draw.arc(self.window, self.RED, [700, 200, 250, 500], -pi/2, pi/2, 2)
-        # gfxdraw.pie(self.window, 700, 450, 250, -90, 90, self.WHITE)
-
-
-
-        # gfxdraw.arc(self.window, 700, 450, 250, -90, 90, self.BLACK)
-        # gfxdraw.arc(self.window, 700, 450, 270, -90, 90, self.BLACK)
-        # gfxdraw.arc(self.window, 700, 450, 290, -90, 90, self.BLACK)
-        # gfxdraw.arc(self.window, 700, 450, 310, -90, 90, self.BLACK)
-
-        # gfxdraw.line(self.window, 700, 200, 300, 200, self.BLACK)
-        # gfxdraw.line(self.window, 700, 180, 300, 180, self.BLACK)
-        # gfxdraw.line(self.window, 700, 160, 300, 160, self.BLACK)
-        # gfxdraw.line(self.window, 700, 140, 300, 140, self.BLACK)
-
-        # gfxdraw.arc(self.window, 300, 350, 150, 90, 270, self.BLACK)
-        # gfxdraw.arc(self.window, 300, 350, 170, 90, 270, self.BLACK)
-        # gfxdraw.arc(self.window, 300, 350, 190, 90, 270, self.BLACK)
-        # gfxdraw.arc(self.window, 300, 350, 210, 90, 270, self.BLACK)
-
-        # gfxdraw.line(self.window, 300, 500, 700, 500, self.BLACK)
-        # gfxdraw.line(self.window, 300, 520, 700, 520, self.BLACK)
-        # gfxdraw.line(self.window, 300, 540, 700, 540, self.BLACK)
-        # gfxdraw.line(self.window, 300, 560, 700, 560, self.BLACK)  

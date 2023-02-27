@@ -4,17 +4,19 @@ from Vehicle import *
 from Generator import *
 import pandas as pd 
 import numpy as np
+from Platoon import *
 from datetime import datetime
 
 class Simulation:
     """Simulation class: handle the entire simulation"""
-    def __init__(self, road = None, generator = None):
+    def __init__(self, road = None, generator = None, platoon = None):
         self.t = 0
         self.dt = 0.05
         self.count = 0
 
         self.road = road # may extend to multiple roads in the future 
         self.generator = generator # may extend to multiple vehicle generators for different roads in the future
+        self.platoon = platoon
 
         self.init_data_record()
         self.init_traffic_flow_summary()
@@ -46,14 +48,22 @@ class Simulation:
         """Create one single road"""
         self.road = Road(waypoints, init_heading, num_lanes, road_width)
     
-    def create_generator(self, mode = 0):
+    def create_generator(self, mode = 0, platoon = None):
         """Create a traffic generator"""
-        self.generator = Generator(self, dt = self.dt, mode = mode)
+        self.generator = Generator(self, dt = self.dt, mode = mode, platoon=platoon)
+
+    def create_platoon(self):
+        """Create a platoon planner"""
+        self.platoon = Platoon(self.road)
+        self.generator.add_platoon(self.platoon)
 
     def update(self):
         """Update the simulation"""
+        if self.count % 1 == 0:
+            self.generator.update() # update generator to generate new vehicles
+        if self.count % 20 == 0:
+            self.platoon.update()
         self.road.update_vehicles(self.dt) # make road to update vehicle information
-        self.generator.update() # update generator to generate new vehicles
         self.update_simulation_time()
         self.update_traffic_flow_summary()
 

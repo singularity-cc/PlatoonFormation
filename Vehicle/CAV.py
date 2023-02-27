@@ -29,6 +29,8 @@ class CAV(Vehicle):
         super().__init__(dt, simulation, v_des, permanent_id, lane, id, veh_state, veh_param, veh_input)
 
         self.category = "CAV"
+        self.is_platooning = 0
+        self.prec_veh = None
         self.lateral_state = LateralState(heading = veh_state.heading)
 
         self.init_computation_module()
@@ -49,11 +51,34 @@ class CAV(Vehicle):
 
     # update : target, planner, controller
     def update(self):
+        if self.is_platooning == 2:
+            # platoon formation is done, switch to platooning control
+            self.update_platooning_control()
+            return
+
         self.update_env()
         self.update_target()
         self.update_trajectory_reference()
         self.update_control_command()
         self.update_state()
+
+
+    def update_platooning_control(self):
+        # may develop an acc controller
+        # self.input.acc = 0
+        # self.steer_angle = 0
+        # self.update_state()
+        # self.state.heading = 0
+
+        prec_veh = self.find_prec_veh()
+        if prec_veh is None:
+            self.input.acc = 0.1 * (30 - self.state.v) # 30 is desired speed
+        else:
+            v_p = prec_veh.state.v - self.state.v
+            s_p = prec_veh.state.x - self.state.x - 60
+            self.input.acc = 0.58 * v_p + 0.1 * s_p
+        self.update_state()
+        self.state.heading = 0
 
     def update_env(self):
         self.update_surrounding_vehicles_on_road()
@@ -67,15 +92,16 @@ class CAV(Vehicle):
     # #TODO: Update lane idx after CAV make lane change
 
     def update_target(self):
-        # target is always in the mid lane
+        # if it is platooning, stop update its own target
+        if self.is_platooning == 1:
+            return
+        # # target is always in the mid lane
         mid_lane_match_point = Point(self.point_location().x, self.segment.start.y)
         target_location = mid_lane_match_point + self.target_movement_point
-        while (self.lane_target_has_collision_with_traffic(target_location, self.lane)):
-            target_location += Point(10, 0)
-
-        self.target_location = target_location
-        self.target_speed = 20
+        self.target_location = self.point_location() + self.target_movement_point #target_location
+        self.target_speed = self.state.v
         self.target_heading = 0
+        self.target_time = distance(target_location, self.point_location()) / (self.target_speed + self.state.v) * 2
 
     def update_trajectory_reference(self):
         if self.simulation.count % 20 == 0:
@@ -91,7 +117,7 @@ class CAV(Vehicle):
             self.update_discrete_speed_reference()
 
             self.motion_plan_compute_time.append((end_time - start_time).microseconds / 1000)
-            print(f"Motion computation time: {(end_time - start_time).microseconds / 1000}")
+            # print(f"Motion computation time: {(end_time - start_time).microseconds / 1000}")
 
     #TODO: Update discrete path and speed references
     def update_discrete_path_reference(self):
@@ -122,14 +148,9 @@ class CAV(Vehicle):
         else:
             self.controller.update()
 
-        # self.match_point_idx = self.find_match_point()
-        # self.v_des = self.discrete_speed_reference[self.match_point_idx]
-        # self.look_ahead_angle = self.find_look_ahead_angle()
-        # # print(f"v_des: {self.v_des}")
-        # self.longitudinal_lateral_decomposed_control()
         end_time = datetime.datetime.now()
         self.control_compute_time.append((end_time - start_time).microseconds / 1000)
-        print(f"Control computation time: {(end_time - start_time).microseconds / 1000}")
+        # print(f"Control computation time: {(end_time - start_time).microseconds / 1000}")
 
 
 
@@ -146,6 +167,15 @@ class CAV(Vehicle):
                         self.surrounding_vehicles.append(vehicle)
                         # print(f"surround vehicle includes {vehicle.lane}")
 
+    def find_prec_veh(self):
+        min_distance = 100000 if self.prec_veh is None else distance(self.point_location(), self.prec_veh.point_location())
+        for segment in self.road.segments:
+            for lane_vehicles in segment.vehicles:
+                for vehicle in lane_vehicles:
+                    dis = distance(self.point_location(), vehicle.point_location())
+                    if dis < min_distance:
+                        self.prec_veh = vehicle
+                        min_distance = dis
 
 
     def generate_trajectory_set(self):
@@ -177,15 +207,15 @@ class CAV(Vehicle):
         #TODO: extend to curve road
         if len(self.discrete_path_reference) > 0:
             start_point = self.discrete_path_reference[self.match_point_idx]
-            print(f"start point is {start_point}")
+            # print(f"start point is {start_point}")
             s = 0
             l = start_point.y - self.segment.start.y
         else:
             s = 0 
             l = self.point_location().y - self.segment.start.y
-        print(f"s is {s}, l is {l}")
+        # print(f"s is {s}, l is {l}")
         # print(f"start l is {l}")
-        self.path_root = Node(s, l, self.state.v, 0, 0)
+        self.path_root = Node(s, l, self.state.v, 0, 0, 0)
         self.path_nodes_vec =  [[] for _ in range(self.num_layers)]
         self.cost = [[[0 for _ in range(self.road.num_lanes)] for _ in range(self.road.num_lanes)] for _ in range(self.num_layers)]
         self.path_nodes = deque([self.path_root])
@@ -194,26 +224,29 @@ class CAV(Vehicle):
         longitudinal_distance = distance(self.target_location, self.point_location())
         lateral_distance = self.road.num_lanes * self.road.lane_width
         v_distance = self.target_speed - self.state.v
+        t_distance = self.target_time - 0
 
         # sample nodes in the mid
         idx = 0
         for i in range(1, self.num_layers):
             frenet_s = longitudinal_distance / (self.num_layers - 1) * i
             frenet_v = v_distance / (self.num_layers - 1) * i + self.state.v
+            frenet_t = t_distance / (self.num_layers - 1) * i
+
             # num_nodes_in_layer = len(path_nodes) - idx
             cur_len = len(self.path_nodes)
             # print(f"frenet s is {frenet_s}")
             # add next layer nodes into deque
             if i == self.num_layers - 1:
                 frenet_l = self.target_location.y - self.segment.start.y
-                nex_node = Node(frenet_s, frenet_l, frenet_v, 0, 0)
+                nex_node = Node(frenet_s, frenet_l, frenet_v, 0, 0, frenet_t)
                 self.path_nodes_vec[i].append(nex_node)
                 self.path_nodes.append(nex_node)
             else:
                 for j in range(self.road.num_lanes):
                     frenet_l = (-self.road.lane_width + j * self.road.lane_width)
                     # print(f"frenet l is {frenet_l}")
-                    nex_node = Node(frenet_s, frenet_l, frenet_v, 0, 0)
+                    nex_node = Node(frenet_s, frenet_l, frenet_v, 0, 0, frenet_t)
                     self.path_nodes_vec[i].append(nex_node)
                     self.path_nodes.append(nex_node)
 
@@ -228,9 +261,10 @@ class CAV(Vehicle):
                     
                     collision_priority = self.num_layers - i
                     num_samples = 20
-                    if i == 0:
-                        collision_priority = 10
-                        num_samples = 20
+                    collision_priority = i
+                    # if i == 0:
+                    #     collision_priority = 10
+                    #     num_samples = 20
                     # add child
                     cur_node.add_child(nex_node)
                     # add edge
@@ -375,8 +409,9 @@ class CAV(Vehicle):
     """************************************CAV Simulated Physical Plant **********************************************"""
     
     def update_state(self):
-        print(f"cav target speed is {self.target_speed}, desired speed is {self.v_des}")
+        print(f"cav id is {self.permanent_id}; target speed is {self.target_speed}, desired speed is {self.v_des}")
         print(f"cav speed is {self.state.v}, acc is {self.input.acc}, heading is {self.state.heading}, steer is {self.input.steer_angle}")
+        print(f"cav location is {self.state.x}, {self.state.y}")
         self.update_kinematic()
         # if self.state.v <= 5:
         #     self.state.v = 0
@@ -459,14 +494,10 @@ class CAV(Vehicle):
 
     def init_target_module(self):
         # target module
-        self.target_location = None
-        self.target_speed = None
         self.target_movement_point = Point(100, 0)
-
-        # add temp target location and speed at the end of the segment
-        self.target_location = self.segment.end.convert_to_point()
-        self.target_speed = 10
-        self.target_heading = 0
+        self.target_location = self.point_location() + self.target_movement_point
+        self.target_speed = self.state.v
+        self.target_time = distance(self.target_location, self.point_location()) / (self.target_speed + self.state.v) * 2
 
     def init_planner_module(self):
         # initialize motion planner configuration

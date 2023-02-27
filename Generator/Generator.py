@@ -14,7 +14,7 @@ class Generator:
     permanent_id = 0
     num_cavs = 0
 
-    def __init__(self, simulation, generation_rate = 20, dt = 0.01, random_seed = 42, mode = 0):
+    def __init__(self, simulation, generation_rate = 20, dt = 0.01, random_seed = 44, mode = 0, platoon = None):
         self.t = 0
         self.last_generation = 0
         self.dt = dt
@@ -23,8 +23,11 @@ class Generator:
         self.road = self.simulation.road
         self.random_seed = random_seed
         self.mode = mode
+        self.platoon = platoon
         random.seed(random_seed)
 
+    def add_platoon(self, platoon):
+        self.platoon = platoon
 
     def update(self):
         """Update the generator state"""
@@ -33,11 +36,11 @@ class Generator:
             # single cav with static obstacles
             if self.generate_static_obstacles_once == 0:
                 # generate statci obstacles
-                for _ in range(10):
+                for _ in range(8):
                     self.generate_static_obstacles()
-                for _ in range(10):
+                for _ in range(8):
                     self.generate_static_obstacles(0)
-                for _ in range(10):
+                for _ in range(8):
                     self.generate_static_obstacles(2)
                 self.generate_static_obstacles_once += 1
             
@@ -49,6 +52,7 @@ class Generator:
                 print("CAV generated")
 
         elif self.mode == 1:
+            # single CAV with moving obstacles
             # generate one CAV
             if self.num_cavs == 0 and self.t >= 30 and random.uniform(0, 1) < 0.5:
                 self.last_generation += 1
@@ -70,8 +74,36 @@ class Generator:
         
         elif self.mode == 2:
             # generate multiple cavs, let them form a platoon
-            if self.num_cavs < 4 and random.uniform(0, 1) < 0.5:
+            if self.t - self.last_generation <= 4:
+                return
+            if self.num_cavs >= 8:
+                return
+            if random.uniform(0, 1) < 0.5:
                 self.generate_CAV(v = 15)
+                self.last_generation = self.t
+                self.num_cavs += 1
+                print("cav generated")
+
+        elif self.mode == 3:
+            # generate multiple cavs and hdvs, let cavs form platoon 
+                        # generate moving hdvs
+            if self.t - self.last_generation <= 2:
+                return
+            
+            # if self.num_hdvs >= 50:
+            #     return
+
+            if self.num_cavs >= 4:
+                return
+
+            if random.uniform(0, 1) <= 0.9:
+                self.generate_HDV(v = 15, v_des = 15)
+                self.last_generation = self.t
+                self.num_hdvs += 1
+
+            if self.t >= 30 and random.uniform(0, 1) < 0.5:
+                self.generate_CAV(v = 15)
+                self.last_generation = self.t
                 self.num_cavs += 1
                 print("cav generated")
 
@@ -120,6 +152,7 @@ class Generator:
             controller = LonLatController(cav)
             cav.add_controller(controller)
             self.road.add_vehicle(cav)
+            self.platoon.add_cav(cav)
             return cav
         else:
             hdv = HDV(self.dt, self.simulation, v_des, self.permanent_id, lane_idx, len(self.road.segments[0].vehicles[lane_idx]), veh_state, veh_param)
@@ -160,7 +193,7 @@ class Generator:
     def init_des_speed(self, lane_idx):
         """Initialize vehicle desired speed"""
         # todo: may set more realistic algorithm
-        return random.uniform(24, 30)
+        return random.uniform(15, 30)
         # if (random.uniform(0, 1) >= 0.8):
         #     return random.uniform(20, 30)
 
@@ -177,7 +210,7 @@ class Generator:
 
     def init_speed(self, lane_idx):
         """Initialize vehicle speed"""
-        return random.uniform(24, 30)
+        return random.uniform(15, 25)
         # if lane_idx == self.road.num_lanes - 1:
         #     v = random.uniform(15, 22)
         # elif lane_idx == self.road.num_lanes - 2:
