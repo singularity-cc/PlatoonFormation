@@ -2,6 +2,7 @@ from Visualizer import *
 from Road import *
 from Vehicle import *
 from Simulation import *
+from gurobipy import *
 
 """Road Design 1"""
 # road_segments = [
@@ -52,10 +53,15 @@ def main():
 
     single_cav_stactic_obstacles = 0
     single_cav_dynamic_obstacles = 1
+    multi_cavs_no_obstacle = 2
+    multi_cavs_dynamic_obstacles = 3
+    low_traffic_5CAVs = 4
+    mid_traffic_5CAVs = 5
+    high_traffic_5CAVs = 6
 
     sim = Simulation() #road, traffic
     sim.create_road(waypoints, init_heading=0, num_lanes = 3, road_width = 4)
-    sim.create_generator(2)
+    sim.create_generator(5)
     sim.create_platoon()
     
 

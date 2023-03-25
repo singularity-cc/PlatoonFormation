@@ -51,12 +51,16 @@ class Edge:
         ego_point = cav.point_location()
         collision_cost = self.compute_collision_cost(ego_point, obstacles, road, collision_priority)
         discomfort_cost = self.compute_discomfort_cost()
-        lane_change_cost = 0
+        lane_change_cost = self.compute_lane_change_cost()
         center_lane_offset_cost = self.compute_center_lane_offset_cost(road)
         target_cost = self.compute_target_cost(cav, road)
 
         self.cost = collision_cost + center_lane_offset_cost + discomfort_cost + lane_change_cost + target_cost
         return self.cost
+
+    def compute_lane_change_cost(self):
+        lane_offset = abs(self.start.l - self.end.l)
+        return 5 ** lane_offset
 
     def compute_collision_cost(self, ego_point, obstacles, road, collision_priority):
         reference_point = Point(ego_point.x, road.segments[0].start.y) # This only works for straight road
@@ -66,9 +70,15 @@ class Edge:
             time = sample.t
             for obstacle in obstacles:
                 cur_obs_point = obstacle.point_location()
+                # if the obstacle is behind the ego vehicle, do not calculate cost
+                if ego_point.x >= cur_obs_point.x + 10:
+                    continue
                 future_obs_point = cur_obs_point + Point(time * obstacle.state.v, 0)
                 if obstacle.category == "CAV":
-                    cost += self.calculate_collision_cost(sample_point, future_obs_point, collision_priority + 2)
+                    # this is for comparison of CAV no cooperation
+                    # cost += self.calculate_collision_cost(sample_point, future_obs_point, collision_priority)
+
+                    cost += self.calculate_collision_cost(sample_point, future_obs_point, collision_priority + 3)
                 else:
                     cost += self.calculate_collision_cost(sample_point, future_obs_point, collision_priority)
         return cost
@@ -101,7 +111,7 @@ class Edge:
             point1 = Point(self.samples[i].s, self.samples[i].l)
             point2 = Point(self.samples[i+1].s, self.samples[i+1].l)
             dis = distance(point1, point2)
-            cost += 10 * dis
+            cost += 100 * dis
 
         return cost
 
@@ -124,7 +134,7 @@ class Edge:
             M1 = 10000
             w1 = 10
         elif collision_priority == 2:
-            M1 = 3000
+            M1 = 10000
             w1 = 5
         elif collision_priority == 3:
             M1 = 1000
@@ -136,10 +146,11 @@ class Edge:
             M1 = 1
             w1 = 1
         
+        # will have different cost for longitudinal and lateral collision risks
 
         lam_static = 1
 
-        radius = 1.7
+        radius = 1.5
         ego_circle_centers = [sample_point]
         ego_circle_centers.append(sample_point + Point(radius, 0))
         ego_circle_centers.append(sample_point - Point(radius, 0))
@@ -151,10 +162,13 @@ class Edge:
         for ego_center in ego_circle_centers:
             for obs_center in obstacle_circle_centers:
                 dis = distance(ego_center, obs_center)
+                longitudinal_dis = abs(ego_center.x - obs_center.x)
+                lateral_dis = abs(ego_center.y - obs_center.y)
                 if dis <= 2 * radius:
                     collision_cost += M1
                 else:
-                    collision_cost += w1 * np.exp(- 1 / lam_static * dis)
+                    collision_cost += w1 * np.exp(- 1 / lam_static * longitudinal_dis)
+                    # collision_cost += w1 * np.exp(- 1 / lam_static * dis)
         return collision_cost
 
     def generate_curve(self, order):

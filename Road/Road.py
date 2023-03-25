@@ -61,6 +61,15 @@ class Road:
             return True
         return False
 
+    def congestion_in_lane(self, lane_idx, start_x, end_x):
+        num_hdvs = 0
+        for segment in self.segments:
+            for vehicle in segment.vehicles[lane_idx]:
+                if vehicle.category == "HDV":
+                    if vehicle.state.x <= end_x and vehicle.state.x >= start_x:
+                        num_hdvs += 1
+
+        return num_hdvs
 
 
 

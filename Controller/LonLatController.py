@@ -2,13 +2,14 @@ from .Controller import *
 from Utilities import *
 import math
 
+
 class LonLatController:
     def __init__(self, cav):
         self.cav = cav
         self.init_control_module()
 
     def init_control_module(self):
-        
+
         # pid configuration
         self.cav.match_point_idx = 0
         self.pid_dp = 0
@@ -24,8 +25,12 @@ class LonLatController:
             self.k = 1
         else:
             self.k = 2
+
+        # this is for Module III comparison
+        self.k = 0.1
         self.look_ahead_angle = 0
-        self.look_ahead_distance = self.k * self.cav.state.v if self.cav.state.v >= 10 else 5
+        self.look_ahead_distance = self.k * \
+            self.cav.state.v if self.cav.state.v >= 10 else 5
         self.look_ahead_point = Point(2, 2)
 
     def update(self):
@@ -40,6 +45,7 @@ class LonLatController:
             self.longitudinal_lateral_decomposed_control()
 
     """******************************************CAV Control Algorithm*****************************************"""
+
     def find_match_point(self):
         # TODO: find the match point of the trajectory reference and use controller to track the speed of it
         idx = 0
@@ -62,7 +68,8 @@ class LonLatController:
         # print(f"first look ahead point is {look_ahead_point}")
         # print(f"first ego point is {ego_point}")
 
-        look_ahead_vec = Vector(self.look_ahead_point.x - ego_point.x, self.look_ahead_point.y - ego_point.y)#.normalize()
+        look_ahead_vec = Vector(self.look_ahead_point.x - ego_point.x,
+                                self.look_ahead_point.y - ego_point.y)  # .normalize()
 
         heading_rad = self.cav.state.heading / 180 * np.pi
         heading_vec = Vector(np.cos(heading_rad), np.sin(heading_rad))
@@ -76,7 +83,7 @@ class LonLatController:
         look_ahead_point_idx = self.cav.match_point_idx
         min_distance = 10000
         # search the min distance point in the trajectory path points
-        for i in range(self.cav.match_point_idx ,len(self.cav.discrete_path_reference)):
+        for i in range(self.cav.match_point_idx, len(self.cav.discrete_path_reference)):
             point = self.cav.discrete_path_reference[i]
             dis = distance(point, ego_point)
             if np.abs(dis - self.look_ahead_distance) < min_distance:
@@ -85,7 +92,6 @@ class LonLatController:
 
         self.look_ahead_point = self.cav.discrete_path_reference[look_ahead_point_idx]
         return self.cav.discrete_path_reference[look_ahead_point_idx]
-
 
     def longitudinal_lateral_decomposed_control(self):
         self.cav.input.acc = self.longitudinal_control()
@@ -99,14 +105,15 @@ class LonLatController:
         ki = 0.05
         kd = 0.01
 
-        self.pid_dd = -(self.pid_dp - (self.cav.v_des - self.cav.state.v)) / self.cav.dt
+        self.pid_dd = -(self.pid_dp - (self.cav.v_des -
+                        self.cav.state.v)) / self.cav.dt
         self.pid_dp = self.cav.v_des - self.cav.state.v
         self.pid_di += self.pid_dp * self.cav.dt
 
         # clear the accummulated pi term every 2.5 seconds
         if self.cav.simulation.count % 250 == 0:
             self.pid_di = 0
-        
+
         # print(f"pid_dp is {self.pid_dp}")
         # print(f"pid_dd is {self.pid_dd}")
         # print(f"pid_di is {self.pid_di}")
@@ -115,7 +122,6 @@ class LonLatController:
         # print(f"acc is {acc}")
         acc = max(min(acc, 3), -4)
         return acc
-        
 
     def lateral_control(self):
         # print(f"angle: {self.look_ahead_angle}")
@@ -126,7 +132,7 @@ class LonLatController:
         # print(f"look ahead angle is {self.look_ahead_angle}, look ahead point is {self.look_ahead_point}")
         if math.isnan(self.look_ahead_angle):
             return 0
-        angle = np.arctan2(2 * self.cav.param.length * self.look_ahead_angle, self.look_ahead_distance) * 180 / np.pi
+        angle = np.arctan2(2 * self.cav.param.length *
+                           self.look_ahead_angle, self.look_ahead_distance) * 180 / np.pi
         # angle = min(max(angle, -0.5), 0.5)
         return angle
-

@@ -2,20 +2,24 @@
 from Road import *
 from Vehicle import *
 from Generator import *
-import pandas as pd 
+import pandas as pd
 import numpy as np
 from Platoon import *
 from datetime import datetime
 
+
 class Simulation:
     """Simulation class: handle the entire simulation"""
-    def __init__(self, road = None, generator = None, platoon = None):
+
+    def __init__(self, road=None, generator=None, platoon=None):
         self.t = 0
+        self.platoon_t = 0
         self.dt = 0.05
         self.count = 0
 
-        self.road = road # may extend to multiple roads in the future 
-        self.generator = generator # may extend to multiple vehicle generators for different roads in the future
+        self.road = road  # may extend to multiple roads in the future
+        # may extend to multiple vehicle generators for different roads in the future
+        self.generator = generator
         self.platoon = platoon
 
         self.init_data_record()
@@ -27,30 +31,28 @@ class Simulation:
         self.traffic_flow = 0
         self.traffic_density = 0
 
- 
-
     def init_data_record(self):
-       self.data = {} # this is the record the data into an excel
+        self.data = {}  # this is the record the data into an excel
 
-       self.data_id = []
-       self.data_veh_category = []
-       self.data_time = []
+        self.data_id = []
+        self.data_veh_category = []
+        self.data_time = []
 
-       self.data_lane_idx = []
-       self.data_veh_length = []
-       self.data_veh_speed = []
-       self.data_veh_x = []
-       self.data_veh_y = []
-       self.data_veh_distance = []
+        self.data_lane_idx = []
+        self.data_veh_length = []
+        self.data_veh_speed = []
+        self.data_veh_x = []
+        self.data_veh_y = []
+        self.data_veh_distance = []
 
-
-    def create_road(self, waypoints, init_heading = 0.0, num_lanes = 3, road_width = 4):
+    def create_road(self, waypoints, init_heading=0.0, num_lanes=3, road_width=4):
         """Create one single road"""
         self.road = Road(waypoints, init_heading, num_lanes, road_width)
-    
-    def create_generator(self, mode = 0, platoon = None):
+
+    def create_generator(self, mode=0, platoon=None):
         """Create a traffic generator"""
-        self.generator = Generator(self, dt = self.dt, mode = mode, platoon=platoon)
+        self.generator = Generator(
+            self, dt=self.dt, mode=mode, platoon=platoon)
 
     def create_platoon(self):
         """Create a platoon planner"""
@@ -60,10 +62,11 @@ class Simulation:
     def update(self):
         """Update the simulation"""
         if self.count % 1 == 0:
-            self.generator.update() # update generator to generate new vehicles
+            self.generator.update()  # update generator to generate new vehicles
         if self.count % 20 == 0:
             self.platoon.update()
-        self.road.update_vehicles(self.dt) # make road to update vehicle information
+        # make road to update vehicle information
+        self.road.update_vehicles(self.dt)
         self.update_simulation_time()
         self.update_traffic_flow_summary()
 
@@ -75,6 +78,7 @@ class Simulation:
     def update_simulation_time(self):
         self.t += self.dt
         self.count += 1
+        self.platoon_t = self.platoon.t
 
     def update_traffic_flow_summary(self):
         self.road.update_traffic_flow_summary()
@@ -84,7 +88,7 @@ class Simulation:
         """Record the traffic simulation data for further analysis"""
         if self.count % 100 != 0:
             return
-        
+
         for segment in self.road.segments:
             for lane in segment.vehicles:
                 for vehicle in lane:
@@ -114,6 +118,7 @@ class Simulation:
 
         dataframe = pd.DataFrame(self.data)
         date_time = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
-        writer = pd.ExcelWriter(f"Traffic_recorded_{date_time}.xlsx", engine="xlsxwriter")
+        writer = pd.ExcelWriter(
+            f"Traffic_recorded_{date_time}.xlsx", engine="xlsxwriter")
         dataframe.to_excel(writer, sheet_name="Sheet1")
         writer.save()

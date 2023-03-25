@@ -3,6 +3,7 @@ from Vehicle import *
 from Road import *
 from Simulation import *
 from Controller import *
+from MotionPlanner import *
 
 
 class Generator:
@@ -13,8 +14,9 @@ class Generator:
     num_hdvs = 0
     permanent_id = 0
     num_cavs = 0
+    # random_seed = 44 for mode 2
 
-    def __init__(self, simulation, generation_rate = 20, dt = 0.01, random_seed = 44, mode = 0, platoon = None):
+    def __init__(self, simulation, generation_rate=20, dt=0.01, random_seed=44, mode=0, platoon=None):
         self.t = 0
         self.last_generation = 0
         self.dt = dt
@@ -43,7 +45,6 @@ class Generator:
                 for _ in range(8):
                     self.generate_static_obstacles(2)
                 self.generate_static_obstacles_once += 1
-            
 
             # generate one CAV
             if self.last_generation == 0 and self.t >= 1 and random.uniform(0, 1) < 0.5:
@@ -56,58 +57,169 @@ class Generator:
             # generate one CAV
             if self.num_cavs == 0 and self.t >= 30 and random.uniform(0, 1) < 0.5:
                 self.last_generation += 1
-                self.generate_CAV(v = 15)
+                self.generate_CAV(v=15)
                 self.num_cavs += 1
                 print("CAV generated")
 
             # generate moving hdvs
             if self.t - self.last_generation <= 2:
                 return
-            
+
             if self.num_hdvs >= 15:
                 return
 
             if random.uniform(0, 1) <= 0.9:
-                self.generate_HDV(v = 15, v_des = 15)
+                self.generate_HDV(v=15, v_des=15)
                 self.last_generation = self.t
                 self.num_hdvs += 1
-        
+
         elif self.mode == 2:
             # generate multiple cavs, let them form a platoon
-            if self.t - self.last_generation <= 4:
+            if self.t - self.last_generation <= 2.5:
                 return
-            if self.num_cavs >= 8:
+            if self.num_cavs >= 5:
                 return
             if random.uniform(0, 1) < 0.5:
-                self.generate_CAV(v = 15)
+                self.generate_CAV(v=15)
                 self.last_generation = self.t
                 self.num_cavs += 1
                 print("cav generated")
 
         elif self.mode == 3:
-            # generate multiple cavs and hdvs, let cavs form platoon 
-                        # generate moving hdvs
+            # generate multiple cavs and hdvs, let cavs form platoon
+            # generate moving hdvs
             if self.t - self.last_generation <= 2:
                 return
-            
+
             # if self.num_hdvs >= 50:
             #     return
 
-            if self.num_cavs >= 4:
-                return
-
-            if random.uniform(0, 1) <= 0.9:
-                self.generate_HDV(v = 15, v_des = 15)
+            if self.t - self.last_generation >= 2 and random.uniform(0, 1) <= 0.5:
+                self.generate_HDV(v=20, v_des=20)
                 self.last_generation = self.t
                 self.num_hdvs += 1
 
-            if self.t >= 30 and random.uniform(0, 1) < 0.5:
-                self.generate_CAV(v = 15)
+            if self.num_cavs >= 5:
+                return
+
+            if self.t >= 15 and self.t - self.last_generation >= 2 and random.uniform(0, 1) < 0.9:
+                self.generate_CAV(v=20)
                 self.last_generation = self.t
                 self.num_cavs += 1
                 print("cav generated")
 
-    def generate_static_obstacles(self, lane_idx = 1):
+            if self.t - self.last_generation >= 2 and random.uniform(0, 1) <= 0.9:
+                self.generate_HDV(v=20, v_des=21)
+                self.last_generation = self.t
+                self.num_hdvs += 1
+
+        elif self.mode == 4:
+            self.generate_5_cavs_low_traffic()
+
+        elif self.mode == 5:
+            self.generate_5_cavs_mid_traffic()
+
+        elif self.mode == 6:
+            self.generate_5_cavs_high_traffic()
+
+    def generate_5_cavs_high_traffic(self):
+        # warm up for traffic
+        if self.t <= 5 and self.t - self.last_generation >= 1 and random.uniform(0, 1) <= 0.9:
+            self.generate_HDV(v=20, v_des=22)
+            self.last_generation = self.t
+            self.num_hdvs += 1
+
+        if abs(self.t - 5.5) <= 0.0001:
+            self.generate_HDV(v=20, lane_idx=2)
+        # generate cavs without obstacles around
+        if abs(self.t - 6) <= 0.0001:
+            self.generate_CAV(v=22, lane_idx=1)
+        if abs(self.t - 7.7) <= 0.0001:
+            self.generate_HDV(v=18, lane_idx=1)
+        if abs(self.t - 7) <= 0.0001:
+            self.generate_CAV(v=20, lane_idx=0)
+        if abs(self.t - 8) <= 0.0001:
+            self.generate_CAV(v=18, lane_idx=2)
+
+        if abs(self.t - 8) <= 0.0001:
+            self.generate_HDV(v=18, lane_idx=1)
+        if abs(self.t - 9.5) <= 0.0001:
+            self.generate_HDV(v=20, lane_idx=0)
+        if abs(self.t - 10) <= 0.0001:
+            self.generate_HDV(v=20, lane_idx=1)
+        if abs(self.t - 11) <= 0.0001:
+            self.generate_HDV(v=20, lane_idx=0)
+
+        if abs(self.t - 11) <= 0.0001:
+            self.generate_CAV(v=21, lane_idx=2)
+        if abs(self.t - 13) <= 0.0001:
+            self.generate_CAV(v=19, lane_idx=1)
+
+        # post traffic
+        if self.t >= 15 and self.t - self.last_generation >= 1.5 and random.uniform(0, 1) <= 0.9:
+            self.generate_HDV(v=20, v_des=21)
+            self.last_generation = self.t
+            self.num_hdvs += 1
+
+    def generate_5_cavs_mid_traffic(self):
+        # warm up for traffic
+        if self.t <= 5 and self.t - self.last_generation >= 1 and random.uniform(0, 1) <= 0.9:
+            self.generate_HDV(v=20, v_des=22)
+            self.last_generation = self.t
+            self.num_hdvs += 1
+
+        # generate cavs without obstacles around
+        if abs(self.t - 6) <= 0.0001:
+            self.generate_CAV(v=22, lane_idx=1)
+        if abs(self.t - 7) <= 0.0001:
+            self.generate_CAV(v=20, lane_idx=0)
+        if abs(self.t - 8) <= 0.0001:
+            self.generate_CAV(v=18, lane_idx=2)
+
+        if abs(self.t - 8) <= 0.0001:
+            self.generate_HDV(v=18, lane_idx=1)
+        if abs(self.t - 9.5) <= 0.0001:
+            self.generate_HDV(v=20, lane_idx=0)
+        # if abs(self.t - 10) <= 0.0001:
+        #     self.generate_HDV(v=20, lane_idx=1)
+
+        if abs(self.t - 11) <= 0.0001:
+            self.generate_CAV(v=21, lane_idx=2)
+        if abs(self.t - 13) <= 0.0001:
+            self.generate_CAV(v=19, lane_idx=1)
+
+        # post traffic
+        if self.t >= 15 and self.t - self.last_generation >= 1.5 and random.uniform(0, 1) <= 0.9:
+            self.generate_HDV(v=20, v_des=21)
+            self.last_generation = self.t
+            self.num_hdvs += 1
+
+    def generate_5_cavs_low_traffic(self):
+        # warm up for traffic
+        if self.t <= 5 and self.t - self.last_generation >= 1.5 and random.uniform(0, 1) <= 0.9:
+            self.generate_HDV(v=20, v_des=22)
+            self.last_generation = self.t
+            self.num_hdvs += 1
+
+        # generate cavs without obstacles around
+        if abs(self.t - 6) <= 0.0001:
+            self.generate_CAV(v=22, lane_idx=1)
+        if abs(self.t - 7) <= 0.0001:
+            self.generate_CAV(v=20, lane_idx=0)
+        if abs(self.t - 8) <= 0.0001:
+            self.generate_CAV(v=18, lane_idx=2)
+        if abs(self.t - 11) <= 0.0001:
+            self.generate_CAV(v=21, lane_idx=2)
+        if abs(self.t - 13) <= 0.0001:
+            self.generate_CAV(v=19, lane_idx=1)
+
+        # post traffic
+        if self.t >= 15 and self.t - self.last_generation >= 1.5 and random.uniform(0, 1) <= 0.9:
+            self.generate_HDV(v=20, v_des=21)
+            self.last_generation = self.t
+            self.num_hdvs += 1
+
+    def generate_static_obstacles(self, lane_idx=1):
         # TODO: extend to arc segment
         self.permanent_id += 1
         v = 0
@@ -127,12 +239,12 @@ class Generator:
 
         veh_state = VehicleState(x, y, v, heading)
         veh_param = VehicleParameter(4, 1.5)
-        hdv = HDV(self.dt, self.simulation, v_des, self.permanent_id, lane_idx, len(self.road.segments[0].vehicles[lane_idx]), veh_state, veh_param)
+        hdv = HDV(self.dt, self.simulation, v_des, self.permanent_id, lane_idx, len(
+            self.road.segments[0].vehicles[lane_idx]), veh_state, veh_param)
         self.road.add_vehicle(hdv)
         return hdv
 
-
-    def generate_vehicle(self, is_cav, v = None, v_des = None, lane_idx = None):
+    def generate_vehicle(self, is_cav, v=None, v_des=None, lane_idx=None):
         """Function to generate vehicle"""
         self.permanent_id += 1
         if lane_idx is None:
@@ -143,44 +255,60 @@ class Generator:
             v_des = self.init_des_speed(lane_idx)
         heading = self.init_vehicle_heading()
         pos = self.init_vehicle_position(lane_idx)
-        
+
         veh_state = VehicleState(*pos, v, heading)
-        veh_param = VehicleParameter(4.5, 1.5) # todo: may generate vehicles with different size
-        
+        # todo: may generate vehicles with different size
+        veh_param = VehicleParameter(4.5, 1.5)
+
         if is_cav:
-            cav = CAV(self.dt, self.simulation, v_des, self.permanent_id, lane_idx, len(self.road.segments[0].vehicles[lane_idx]), veh_state, veh_param)
+            cav = CAV(self.dt, self.simulation, v_des, self.permanent_id, lane_idx, len(
+                self.road.segments[0].vehicles[lane_idx]), veh_state, veh_param)
             controller = LonLatController(cav)
             cav.add_controller(controller)
+            planner = LatticePlanner(cav)
+            cav.add_planner(planner)
+            plant = BicycleVehiclePlant(cav)
+            cav.add_plant(plant)
+            # TODO(hanyu): add planner
             self.road.add_vehicle(cav)
             self.platoon.add_cav(cav)
             return cav
         else:
-            hdv = HDV(self.dt, self.simulation, v_des, self.permanent_id, lane_idx, len(self.road.segments[0].vehicles[lane_idx]), veh_state, veh_param)
+            hdv = HDV(self.dt, self.simulation, v_des, self.permanent_id, lane_idx, len(
+                self.road.segments[0].vehicles[lane_idx]), veh_state, veh_param)
+            car_following_controller = CarFollowingController(hdv)
+            hdv.add_car_following_controller(car_following_controller)
+            lane_change_controller = LaneChangeController(hdv)
+            hdv.add_lane_change_controller(lane_change_controller)
+            plant = LongitudinalVehiclePlant(hdv)
+            hdv.add_longitudinal_vehicle_plant(plant)
             self.road.add_vehicle(hdv)
             return hdv
 
-    def generate_CAV(self, v = None, v_des = None, lane_idx = None):
+    def generate_CAV(self, v=None, v_des=None, lane_idx=None):
         return self.generate_vehicle(True, v, v_des, lane_idx)
 
-    def generate_HDV(self, v = None, v_des = None, lane_idx = None):
+    def generate_HDV(self, v=None, v_des=None, lane_idx=None):
         return self.generate_vehicle(False, v, v_des, lane_idx)
 
     """****************************************** Vehicle Initialization Functions **********************************************************"""
+
     def init_lane_idx(self):
         """Initialize vehicle lane index"""
         num_lanes = self.road.num_lanes
-        return random.randrange(0, num_lanes)   
-        
+        return random.randrange(0, num_lanes)
+
     def init_vehicle_heading(self):
         """Initialize vehicle heading"""
         return self.road.init_heading
 
     def init_vehicle_position(self, lane_idx):
         """Initialize vehicle position"""
-        init_angle = self.init_vehicle_heading()/ 180 * np.pi
+        init_angle = self.init_vehicle_heading() / 180 * np.pi
         start_cos, start_sin = np.cos(init_angle), np.sin(init_angle)
         segment_point = self.road.segments[0].start
-        init_lane_dx, init_lane_dy = self.road.lane_width * start_sin, self.road.lane_width * start_cos
+        init_lane_dx, init_lane_dy = self.road.lane_width * \
+            start_sin, self.road.lane_width * start_cos
         if self.road.num_lanes % 2 == 0:
             lane_factor = lane_idx - (self.road.num_lanes + 1) // 2
         else:
@@ -207,7 +335,6 @@ class Generator:
         #     v = random.uniform(30, 32)
         # return v
 
-
     def init_speed(self, lane_idx):
         """Initialize vehicle speed"""
         return random.uniform(15, 25)
@@ -220,5 +347,3 @@ class Generator:
         # else:
         #     v = random.uniform(30, 32)
         # return v
-
-
