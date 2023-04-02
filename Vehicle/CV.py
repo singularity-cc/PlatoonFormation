@@ -9,7 +9,7 @@ import numpy as np
 import datetime 
 import math
 
-# TODO(Hanyu): implement a CV dynamics logic only involving longitudinal dynamics and lateral lane change decisions
+# TODO(Hanyu): implement a CV dynamics logic only involving longitudinal dynamics (acceleration) and lateral lane change decisions -->
 class CV(Vehicle):
     def __init__(self):
         pass

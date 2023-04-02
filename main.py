@@ -31,7 +31,7 @@ from gurobipy import *
 # ]
 
 waypoints = [
-    Point(10, 10), Point(5000, 10) #, Point(20000, 10)
+    Point(10, 10), Point(1000, 10) #, Point(20000, 10)
 ]
 
 
@@ -61,7 +61,7 @@ def main():
 
     sim = Simulation() #road, traffic
     sim.create_road(waypoints, init_heading=0, num_lanes = 3, road_width = 4)
-    sim.create_generator(5)
+    sim.create_generator(-1)
     sim.create_platoon()
     
 

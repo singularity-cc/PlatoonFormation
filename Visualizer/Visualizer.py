@@ -6,6 +6,7 @@ from pygame import gfxdraw
 from Road import *
 # from Assets import *
 from Simulation import *
+import vidmaker
 
 
 class Visualizer:
@@ -22,14 +23,19 @@ class Visualizer:
         """Initialize necessary variables for pygame framework"""
         self.running = True
         self.window = None
-        self.size = self.width, self.height = 1200, 900
+        self.size = self.width, self.height = 1200, 200  #
         self.zoom = 1
         self.offset = (0, 0)
         self.mouse_last = (0, 0)
         self.mouse_down = False
         self.camera_on = False
+        self.video_on = False
         self.dt = simulator.dt
         self.fps = int(1.0 / self.dt)
+        # If fps and resolution are auto then late_export has to be True
+        date_time = datetime.now().strftime("%m_%d_%Y_%M_%S")
+        self.video = vidmaker.Video(
+            f"Experiments/Video/{date_time}.mp4", late_export=True)
 
         """Initialize simulator including road simulator, vehicle generator"""
         self.simulator = simulator
@@ -48,6 +54,7 @@ class Visualizer:
         self.clock = pygame.time.Clock()
         pygame.font.init()
         self.text_font = pygame.font.SysFont('Lucida Console', 16)
+        self.text_veh_font = pygame.font.SysFont('Lucida Console', 8)
         pygame.display.update()
 
     def on_execute(self):
@@ -63,6 +70,8 @@ class Visualizer:
 
         # clean up after the visualized simulation ends
         self.on_cleanup()
+        # export video
+        self.video.export(verbose=True)
 
     def on_cleanup(self):
         pygame.quit()
@@ -77,7 +86,8 @@ class Visualizer:
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_s:
                 date_time = datetime.now().strftime("%m_%d_%Y_%M_%S")
-                pygame.image.save(self.window, f"{date_time} screenshot.jpg")
+                pygame.image.save(
+                    self.window, f"Experiment/Picture/{date_time} screenshot.jpg")
             elif event.key == pygame.K_r:
                 self.simulator.output_record_data_as_excel()
             elif event.key == pygame.K_c:
@@ -85,6 +95,8 @@ class Visualizer:
                     self.camera_on = True
                 else:
                     self.camera_on = False
+            elif event.key == pygame.K_v:
+                self.record_video()
 
         # Handle mouse events
         elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -123,10 +135,15 @@ class Visualizer:
             # camera offset
             camera = self.simulator.platoon.cavs[0].point_location()
             # camera = (head_cav_pos.x, head_cav_pos.y)
-            self.offset = (-camera.x + 100, -camera.y)
+            self.offset = (-camera.x + 70, -camera.y)
 
         """Draw the updated simulation"""
         self.draw()
+
+        if self.video_on:
+            # record video
+            self.video.update(pygame.surfarray.pixels3d(
+                self.window).swapaxes(0, 1), inverted=False)  # THIS LINE
         """Display the updated simulation"""
         pygame.display.update()
 
@@ -211,7 +228,21 @@ class Visualizer:
         size = (param.length, param.width)
         angle = np.pi * state.heading / 180.0
 
+        self.draw_vehicle_state(veh, color)
         self.rotated_box(pos, size, angle, color=color)
+
+    def draw_vehicle_state(self, veh, color):
+        offset = (0, 2)
+        x, y = (veh.state.x, veh.state.y)
+        veh_state_text = self.text_veh_font.render(
+            f'lane={veh.lane}', False, sel)
+        veh_state_text_rect = veh_state_text.get_rect()
+        veh_state_text_rect.center = [int(
+            self.width/2+(x + self.offset[0] + offset[0])*self.zoom),
+        int(self.height/2+(y + self.offset[1] + offset[1])*self.zoom)],
+
+        # [pos[0] + self.offset[0], pos[1] + self.offset[1]]
+        self.window.blit(veh_state_text, veh_state_text_rect)
 
     # Draw CAV target and motion trajectory
     def draw_target(self, cav, color=BLUE):
@@ -226,7 +257,7 @@ class Visualizer:
             return
 
         for point, speed in cav.best_trajectory_cartessian:
-            self.draw_circle(point.x, point.y, 0.5, True, color)
+            self.draw_circle(point.x, point.y, 0.6, True, color)
 
     def draw_reference_line(self, cav, color=BLACK):
         if cav.is_platooning == 2:
@@ -237,7 +268,7 @@ class Visualizer:
 
         look_ahead_point = cav.look_ahead_point
         self.draw_circle(look_ahead_point.x,
-                         look_ahead_point.y, 0.5, True, self.BLUE)
+                         look_ahead_point.y, 0.3, True, self.BLUE)
 
     def draw_path_samples(self, cav, color=BLACK):
         if cav.is_platooning == 2:
@@ -245,13 +276,13 @@ class Visualizer:
         # for point in cav.discrete_path_reference:
         #     self.draw_circle(point.x, point.y, 1, True, color)
         for point in cav.visualization_set:
-            self.draw_circle(point.x, point.y, 1, True, color)
+            self.draw_circle(point.x, point.y, 0.6, True, color)
 
         # for point in cav.dense_visualization_set:
         #     self.draw_circle(point.x, point.y, 1, True, self.BLACK)
 
         for point in cav.dense_visualization_set:
-            self.draw_circle(point.x, point.y, 0.6, True, self.BLACK)
+            self.draw_circle(point.x, point.y, 0.3, True, self.BLACK)
 
     """****************************************** Support Functions for Draw Road Functions  **********************************************************"""
 
@@ -380,3 +411,10 @@ class Visualizer:
             int(self.width/2+(x + self.offset[0])*self.zoom),
             int(self.height/2+(y + self.offset[1])*self.zoom),
         )
+
+    def record_video(self):
+        self.video_on = not self.video_on
+        if (self.video_on):
+            print("Video is on")
+        else:
+            print("Video is off")

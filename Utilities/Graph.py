@@ -95,7 +95,7 @@ class Edge:
         cost = 0
         for sample in self.samples:
             target_lane_offset = abs(sample.l - (cav.target_location.y - road.segments[0].start.y))
-        return 100 * target_lane_offset * target_lane_offset
+        return 10 * target_lane_offset * target_lane_offset
 
     def compute_center_lane_offset_cost(self, road):
         cost = 0

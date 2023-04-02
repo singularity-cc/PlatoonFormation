@@ -32,8 +32,8 @@ class LaneChangeController:
             return
 
         """Do lane change decision using random algorithm"""
-        # self.MOBIL_lane_change()
-        self.random_lane_change()
+        self.MOBIL_lane_change()
+        # self.random_lane_change()
 
     def MOBIL_lane_change(self):
         """MOBIL lane change algorithm to do lane change decisions by calculating the incentives"""
@@ -52,7 +52,7 @@ class LaneChangeController:
 
         ego_a_no_lane_change = self.vehicle.IDM_predict(precede_veh)
         fol_a1_no_lane_change = follow_veh.IDM_predict(
-            self) if follow_veh is not None else 0
+            self.vehicle) if follow_veh is not None else 0
 
         if self.is_gap_acceptable(left_precede_veh, left_follow_veh) and left_precede_veh != -1:
             ego_a_after_lane_change = self.vehicle.IDM_predict(

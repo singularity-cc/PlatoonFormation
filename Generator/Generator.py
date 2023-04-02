@@ -34,7 +34,20 @@ class Generator:
     def update(self):
         """Update the generator state"""
         self.t += self.dt
-        if self.mode == 0:
+        if self.mode == -1:
+            # generate pure HDV traffic
+            if self.t - self.last_generation <= 2:
+                return
+
+            # if self.num_hdvs >= 50:
+            #     return
+
+            if self.t - self.last_generation >= 2 and random.uniform(0, 1) <= 0.7:
+                self.generate_HDV()
+                self.last_generation = self.t
+                self.num_hdvs += 1 
+        
+        elif self.mode == 0:
             # single cav with static obstacles
             if self.generate_static_obstacles_once == 0:
                 # generate statci obstacles
@@ -49,7 +62,7 @@ class Generator:
             # generate one CAV
             if self.last_generation == 0 and self.t >= 1 and random.uniform(0, 1) < 0.5:
                 self.last_generation += 1
-                self.generate_CAV(v=20)
+                self.generate_CAV(v=18)
                 print("CAV generated")
 
         elif self.mode == 1:
@@ -57,7 +70,7 @@ class Generator:
             # generate one CAV
             if self.num_cavs == 0 and self.t >= 30 and random.uniform(0, 1) < 0.5:
                 self.last_generation += 1
-                self.generate_CAV(v=15)
+                self.generate_CAV(v=26)
                 self.num_cavs += 1
                 print("CAV generated")
 
@@ -65,11 +78,17 @@ class Generator:
             if self.t - self.last_generation <= 2:
                 return
 
-            if self.num_hdvs >= 15:
+            if self.num_hdvs >= 40:
                 return
 
             if random.uniform(0, 1) <= 0.9:
-                self.generate_HDV(v=15, v_des=15)
+                odd = random.uniform(0, 1)
+                if odd > 0.4:
+                    self.generate_HDV(v=15, v_des=15, lane_idx=1)
+                elif odd > 0.2:
+                    self.generate_HDV(v=15, v_des=15, lane_idx=0)
+                else:
+                    self.generate_HDV(v=15, v_des=15, lane_idx=2)
                 self.last_generation = self.t
                 self.num_hdvs += 1
 
@@ -121,6 +140,8 @@ class Generator:
 
         elif self.mode == 6:
             self.generate_5_cavs_high_traffic()
+
+
 
     def generate_5_cavs_high_traffic(self):
         # warm up for traffic
@@ -269,6 +290,8 @@ class Generator:
             cav.add_planner(planner)
             plant = BicycleVehiclePlant(cav)
             cav.add_plant(plant)
+            decider = Platoon(cav)
+            cav.add_decider(decider)
             # TODO(hanyu): add planner
             self.road.add_vehicle(cav)
             self.platoon.add_cav(cav)

@@ -15,11 +15,12 @@ class SegmentPoint:
         return f"({self.x}, {self.y}, {self.heading})"
 
 class Segment:
-    def __init__(self, start: Point, end: Point, start_heading, num_lanes):
+    def __init__(self, start: Point, end: Point, start_heading, num_lanes, lane_width):
         # straigt segment information
         self.start = SegmentPoint(start.x, start.y, start_heading)
         self.end = SegmentPoint(end.x, end.y, start_heading)
         self.num_lanes = num_lanes
+        self.lane_width = lane_width
         
         # arc segment information
         self.arc_radius = None
@@ -46,6 +47,8 @@ class Segment:
 
     def update_vehicles(self):
         """Update all vehicles' states in the current road segment"""
+        for i in range(self.num_lanes):
+            self.reorganize_vehicles_in_lane(i)
 
         # print("segment is updated")
         for vehicles_in_lane in self.vehicles:
@@ -61,6 +64,8 @@ class Segment:
     def reorganize_vehicles_in_lane(self, lane):
         """Reorganize all the vehicles in the target lane in the current segment by reassigning the vehicle id"""
         id = 0
+        #TODO: extend to curvature road
+        self.vehicles[lane].sort(key=lambda veh: veh.travel_distance)
         for vehicle in self.vehicles[lane]:
             vehicle.id = id
             id += 1

@@ -30,7 +30,7 @@ class Platoon:
             self.count += 1
 
         if len(self.cavs) < self.capacity or self.count <= 5:
-            print("platoon formation has not started")
+            # print("platoon formation has not started")
             return
 
         # start forming platoon

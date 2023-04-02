@@ -31,7 +31,6 @@ class CAV(Vehicle):
 
         self.category = "CAV"
         self.is_platooning = 0
-        self.prec_veh = None
         self.lateral_state = LateralState(heading = veh_state.heading)
 
         self.init_computation_module()
@@ -55,7 +54,7 @@ class CAV(Vehicle):
         # print(f"cav id is {self.permanent_id}; target speed is {self.target_speed}, desired speed is {self.v_des}")
         # print(f"cav speed is {self.state.v}, acc is {self.input.acc}, heading is {self.state.heading}, steer is {self.input.steer_angle}")
         # print(f"cav location is {self.state.x}, {self.state.y}")
-        
+        # print(f"cav lane is {self.lane}")
         # doing platooning control or not is also controlled by decider
         if self.is_platooning == 2:
             # platoon formation is done, switch to platooning control
@@ -72,8 +71,12 @@ class CAV(Vehicle):
         self.update_control_command()
         # update CAV physical state
         self.update_state()
+        if self.simulation.count % 100 == 0:
+            print(f"cav lane is {self.lane}")
+            self.update_labels()
 
     def update_platooning_control(self):
+        prec_veh = None
         prec_veh = self.find_prec_veh()
         # print(prec_veh)
         if prec_veh is None:
@@ -102,15 +105,18 @@ class CAV(Vehicle):
 
         # if it is platooning, stop update its own target
         if self.is_platooning == 1:
+            self.decider.update()
             return
 
         # # target is always in the mid lane if not in platooning formation
         mid_lane_match_point = Point(self.point_location().x, self.segment.start.y)
         target_location = mid_lane_match_point + self.target_movement_point
-        self.target_location = target_location # self.point_location() + self.target_movement_point #target_location
+        self.target_location = self.point_location() + self.target_movement_point 
+        #target_location # self.point_location() + self.target_movement_point #target_location
         self.target_speed = self.state.v
         self.target_heading = 0
         self.target_time = distance(target_location, self.point_location()) / (self.target_speed + self.state.v) * 2
+        
 
     def update_trajectory_reference(self):
         self.planner.update()
@@ -146,21 +152,7 @@ class CAV(Vehicle):
                         self.surrounding_vehicles.append(vehicle)
                         # print(f"surround vehicle includes {vehicle.lane}")
 
-    def find_prec_veh(self):
-        min_distance = 100000 # if self.prec_veh is None else distance(self.point_location(), self.prec_veh.point_location())
-        for segment in self.road.segments:
-            for lane_vehicles in segment.vehicles:
-                for vehicle in lane_vehicles:
-                    if abs(vehicle.state.y - self.state.y) >= self.road.lane_width / 2:
-                        continue
-                    if vehicle is self:
-                        continue
-                    dis = vehicle.state.x - self.state.x # distance(self.point_location(), vehicle.point_location())
-                    if dis > 0 and dis < min_distance:
-                        self.prec_veh = vehicle
-                        min_distance = dis
 
-        return self.prec_veh
 
 
     """************************************Initialization Modules **********************************************"""

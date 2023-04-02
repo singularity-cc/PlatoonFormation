@@ -18,22 +18,29 @@ class LatticePlanner:
         # initialize motion planner configuration
         self.cav.control_track_point = None
 
-        self.cav.trajectory_set = []
-        self.cav.best_trajectory_idx = deque()
         self.cav.best_trajectory = deque()
+
+        # cav path and speed sets
         self.cav.path_set = deque()
         self.cav.speed_set = deque()
+        self.cav.trajectory_set = []
+
+        # cav planner visualization
         self.cav.visualization_set = []
         self.cav.best_trajectory_cartessian = []
-
-        self.cav.path_edges = []
-        self.cav.speed_edges = []
-
-        self.cav.best_path = []
-        self.cav.best_speed = []
-
         self.cav.dense_visualization_set = []
         self.cav.trajectory_set_with_dense_info = []
+
+        # init parameters
+        self.cav.num_layers = 5
+        self.cav.num_path_nodes_per_layer = 3  # can only focus on the adjacent lanes
+        self.cav.num_speed_nodes_per_layer = 0
+        # TODO: refactor + 1, the + 1 is because of the extra speed sample from path node
+        self.cav.num_trajectory_nodes_per_layer = (self.cav.num_speed_nodes_per_layer + 1) * \
+            self.cav.num_path_nodes_per_layer
+        self.num_evaluation_samples_per_trajectory = 10
+        self.cav.vmin = 15
+        self.cav.vmax = 30
 
     def init_frenet_module(self):
         self.cav.reference_line = []
@@ -71,19 +78,26 @@ class LatticePlanner:
         if self.cav.simulation.count % 20 == 0:
             start_time = datetime.datetime.now()
             self.generate_trajectory_set()
-            # self.select_best_path()
+            self.select_best_trajectory()
             # self.display_trajectory()
             end_time = datetime.datetime.now()
 
             self.update_visualization_set()
 
+            # update path and speed reference for controller module
             self.update_discrete_path_reference()
             self.update_discrete_speed_reference()
 
             self.cav.motion_plan_compute_time.append(
                 (end_time - start_time).microseconds / 1000)
-            # print(f"Motion computation time: {(end_time - start_time).microseconds / 1000}")
+            print(
+                f"Motion computation time: {(end_time - start_time).microseconds / 1000}")
         pass
+
+    def generate_trajectory_set(self):
+        self.generate_path_set()
+        self.generate_speed_set()
+        self.combine_path_speed_set()
 
     # ######################################################################
 
@@ -106,53 +120,10 @@ class LatticePlanner:
 
     #######################################################################
 
-    def find_prec_veh(self):
-        # if self.prec_veh is None else distance(self.point_location(), self.prec_veh.point_location())
-        min_distance = 100000
-        for segment in self.cav.road.segments:
-            for lane_vehicles in segment.vehicles:
-                for vehicle in lane_vehicles:
-                    if abs(vehicle.state.y - self.state.y) >= self.road.lane_width / 2:
-                        continue
-                    if vehicle is self:
-                        continue
-                    # distance(self.point_location(), vehicle.point_location())
-                    dis = vehicle.state.x - self.cav.state.x
-                    if dis > 0 and dis < min_distance:
-                        self.cav.prec_veh = vehicle
-                        min_distance = dis
-
-        return self.cav.prec_veh
-
-    def generate_trajectory_set(self):
-        self.cav.num_layers = 5
-        self.cav.num_path_samples_per_layer = 3  # can only focus on the adjacent lanes
-        self.cav.num_speed_samples_per_layer = 5
-
-        self.cav.vmin = 0
-        self.cav.vmax = 30
-
-        self.generate_path_set()
-        self.select_best_path()
-
-    def select_best_trajectory(self):
-        self.coordinate_with_other_CAVs()
-        self.cav.best_trajectory = self.select_best_trajectory_according_to_cost()
-
-    def coordinate_with_other_CAVs(self):
-        # TODO(HANYU): add cooperation algorithm
-        pass
-
-    def improve_best_trajectory(self):
-        # TODO(HANYU): iteratively improve path and speed trajectory
-        self.improve_path()
-        self.improve_speed()
-
     # """trajectory generation"""
 
     def generate_path_set(self):
         # for straight road
-        # node info: (s, l, v, a, k， t)
         # TODO: extend to curve road
         if len(self.cav.discrete_path_reference) > 0:
             start_point = self.cav.discrete_path_reference[self.cav.match_point_idx]
@@ -164,16 +135,17 @@ class LatticePlanner:
             l = self.cav.point_location().y - self.cav.segment.start.y
         # print(f"s is {s}, l is {l}")
         # print(f"start l is {l}")
+
+        # initialize trajectory nodes
         self.cav.path_root = Node(s, l, self.cav.state.v, 0, 0, 0)
         self.cav.path_nodes_vec = [[] for _ in range(self.cav.num_layers)]
-        self.cav.cost = [[[0 for _ in range(self.cav.road.num_lanes)] for _ in range(
-            self.cav.road.num_lanes)] for _ in range(self.cav.num_layers)]
         self.cav.path_nodes = deque([self.cav.path_root])
         self.cav.path_nodes_vec[0].append(self.cav.path_root)
 
+        # initialize longitudinal distance and v, t distances
         longitudinal_distance = min(
             distance(self.cav.target_location, self.cav.point_location()), 100)
-        lateral_distance = self.cav.road.num_lanes * self.cav.road.lane_width
+        # lateral_distance = self.cav.road.num_lanes * self.cav.road.lane_width
         v_distance = self.cav.target_speed - self.cav.state.v
         t_distance = self.cav.target_time - 0
 
@@ -184,10 +156,6 @@ class LatticePlanner:
             frenet_v = v_distance / \
                 (self.cav.num_layers - 1) * i + self.cav.state.v
             frenet_t = t_distance / (self.cav.num_layers - 1) * i
-
-            # num_nodes_in_layer = len(path_nodes) - idx
-            cur_len = len(self.cav.path_nodes)
-            # print(f"frenet s is {frenet_s}")
             # add next layer nodes into deque
             if i == self.cav.num_layers - 1:
                 frenet_l = self.cav.target_location.y - self.cav.segment.start.y
@@ -195,57 +163,90 @@ class LatticePlanner:
                 self.cav.path_nodes_vec[i].append(nex_node)
                 self.cav.path_nodes.append(nex_node)
             else:
-                for j in range(self.cav.road.num_lanes):
+                for j in range(self.cav.num_path_nodes_per_layer):
                     frenet_l = (-self.cav.road.lane_width +
                                 j * self.cav.road.lane_width)
                     # print(f"frenet l is {frenet_l}")
                     nex_node = Node(frenet_s, frenet_l,
                                     frenet_v, 0, 0, frenet_t)
+
                     self.cav.path_nodes_vec[i].append(nex_node)
                     self.cav.path_nodes.append(nex_node)
 
-            # construct edges according to cur_node and nex_node
-            for k in range(idx, cur_len):
-                cur_node = self.cav.path_nodes[k]
-                # path_nodes.popleft()
+    def generate_speed_set(self):
+        self.cav.speed_nodes_vec = [[] for _ in range(self.cav.num_layers)]
 
-                for j in range(cur_len, len(self.cav.path_nodes)):
-                    nex_node = self.cav.path_nodes[j]
+        # add initial speed
+        # self.cav.speed_nodes_vec[0].append(self.cav.state.v)
 
-                    collision_priority = self.cav.num_layers - i
-                    num_samples = 20
+        # add middle layer speeds
+        for i in range(1, self.cav.num_layers - 1):
+            for j in range(self.cav.num_speed_nodes_per_layer):
+                v = self.cav.vmin + \
+                    (self.cav.vmax - self.cav.vmin) / \
+                    self.cav.num_speed_nodes_per_layer * j
+                self.cav.speed_nodes_vec[i].append(v)
+
+        # add target speed
+        # self.cav.speed_nodes_vec[-1].append(self.cav.target_speed)
+
+    def combine_path_speed_set(self):
+        self.cav.trajectory_nodes_vec = [[]
+                                         for _ in range(self.cav.num_layers)]
+
+        self.cav.cost = [[[0 for _ in range(self.cav.num_trajectory_nodes_per_layer)] for _ in range(
+            self.cav.num_trajectory_nodes_per_layer)] for _ in range(self.cav.num_layers)]
+
+        # generate trajectory nodes
+
+        for i in range(0, self.cav.num_layers):
+            speed_nodes = self.cav.speed_nodes_vec[i]
+            path_nodes = self.cav.path_nodes_vec[i]
+
+            for path_node in path_nodes:
+                # add path node with speed profiles to reach target speed
+                # TODO: refactor to use speed set
+                self.cav.trajectory_nodes_vec[i].append(path_node)
+                for speed_node in speed_nodes:
+                    s = path_node.s
+                    l = path_node.l
+                    v = speed_node
+                    self.cav.trajectory_nodes_vec[i].append(
+                        Node(s, l, v, 0, 0, 0))
+
+        # generate trajectory edges and costs
+        for i in range(1, self.cav.num_layers):
+            cur_layer_trajectory_nodes = self.cav.trajectory_nodes_vec[i - 1]
+            nex_layer_trajectory_nodes = self.cav.trajectory_nodes_vec[i]
+            for j in range(len(cur_layer_trajectory_nodes)):
+                cur_trajectory_node = cur_layer_trajectory_nodes[j]
+                for k in range(len(nex_layer_trajectory_nodes)):
+                    nex_trajectory_node = nex_layer_trajectory_nodes[k]
+
                     collision_priority = i
-                    # if i == 0:
-                    #     collision_priority = 10
-                    #     num_samples = 20
-                    # add child
-                    cur_node.add_child(nex_node)
-                    # add edge
-                    edge = Edge(cur_node, nex_node, num_samples)
 
-                    edge.evaluate_edge_cost(
+                    cur_trajectory_node.add_child(nex_trajectory_node)
+                    trajectory_edge = Edge(
+                        cur_trajectory_node, nex_trajectory_node, self.num_evaluation_samples_per_trajectory)
+                    trajectory_edge.evaluate_edge_cost(
                         self.cav, self.cav.surrounding_vehicles, self.cav.road, collision_priority)
-                    cur_node.add_edge(edge)
+                    cur_trajectory_node.add_edge(trajectory_edge)
 
-                    cur_layer_idx = k - idx
-                    nex_layer_idx = j - cur_len
-                    self.cav.cost[i -
-                                  1][cur_layer_idx][nex_layer_idx] = edge.get_cost()
+                    self.cav.cost[i-1][j][k] = trajectory_edge.get_cost()
 
-                    # print(f"cur_layer is {i-1}, cur_layer_idx is {cur_layer_idx}, next_layer_idx is {nex_layer_idx}, cost is {edge.get_cost()}")")
-            idx = cur_len
+    def select_best_trajectory(self):
 
-    def select_best_path(self):
-        self.cav.dp = [[0 for _ in range(self.cav.road.num_lanes)]
+        self.cav.dp = [[0 for _ in range(self.cav.num_trajectory_nodes_per_layer)]
                        for _ in range(self.cav.num_layers)]
         prev_best_trajectory = self.cav.best_trajectory
         self.cav.best_trajectory.clear()
         self.cav.best_trajectory_cartessian.clear()
 
         for i in range(1, self.cav.num_layers):
-            num_j = self.cav.road.num_lanes if i < self.cav.num_layers - 1 else 1
+            num_j = self.cav.num_trajectory_nodes_per_layer if i < self.cav.num_layers - \
+                1 else 1  # self.cav.num_speed_nodes_per_layer, assuming the last layer only have one speed node
             for j in range(num_j):
-                num_k = self.cav.road.num_lanes if i > 1 else 1
+                num_k = self.cav.num_trajectory_nodes_per_layer if i > 1 else 1
                 self.cav.dp[i][j] = min(
                     (self.cav.dp[i-1][k] + self.cav.cost[i-1][k][j]) for k in range(num_k))
 
@@ -256,12 +257,12 @@ class LatticePlanner:
         cur_trajectory_cost = self.cav.dp[-1][0]
         j = 0  # this is the cur_trajectory_cost idx at the final layer
         for i in range(self.cav.num_layers - 1, 0, -1):
-            num_k = self.cav.road.num_lanes if i > 1 else 1
+            num_k = self.cav.num_trajectory_nodes_per_layer if i > 1 else 1
             for k in range(num_k):
                 if abs(self.cav.dp[i-1][k] + self.cav.cost[i-1][k][j] - cur_trajectory_cost) < 0.001:
                     # print(f"best node i is {i}, k is {k}")
                     self.cav.best_trajectory.appendleft(
-                        (self.cav.path_nodes_vec[i-1][k], self.cav.path_nodes_vec[i-1][k].edges[j], (i-1, k)))
+                        (self.cav.trajectory_nodes_vec[i-1][k], self.cav.trajectory_nodes_vec[i-1][k].edges[j], (i-1, k)))
                     # update cost
                     cur_trajectory_cost -= self.cav.cost[i-1][k][j]
                     j = k  # update j
@@ -312,46 +313,16 @@ class LatticePlanner:
 
             # idx += 1
 
-    def generate_speed_set(self):
-        self.cav.speed_samples = [[] for _ in range(self.cav.num_layers)]
+    """improve trajectory"""
 
-        # add initial speed
-        self.cav.speed_samples[0].append(self.cav.state.v)
-
-        # add middle layer speeds
-        for i in range(1, self.cav.num_layers - 1):
-            for j in range(self.cav.num_speed_samples_per_layer):
-                v = self.cav.v_min + \
-                    (self.cav.v_max - self.cav.v_min) / \
-                    self.cav.num_speed_samples_per_layer * j
-                self.cav.speed_samples[i].append(v)
-
-        # add target speed
-        self.cav.speed_samples[-1].append(self.cav.target_speed)
-
-        # generate speed set using breadth first search
-        self.cav.speed_set.clear()
-        self.cav.speed_set.append(self.cav.speed_samples[0].copy())
-
-        for layer in range(1, self.cav.num_layers):
-            num_size = len(self.cav.speed_set)
-            for i in range(num_size):
-                speed_list = self.cav.speed_set[0].copy()
-                self.cav.speed_set.popleft()
-                for speed in self.cav.speed_samples[layer]:
-                    new_speed_list = speed_list[:]
-                    new_speed_list.append(speed)
-                    self.cav.speed_set.append(new_speed_list)
-
-        # print("speed stop")
-
-    """select trajectory"""
-
-    def select_best_trajectory_according_to_cost(self):
-        obstacles = self.find_surrounding_obstacles_on_road()
-        for obstacle in obstacles:
-            pass
+    def coordinate_with_other_CAVs(self):
+        # TODO(HANYU): add cooperation algorithm
         pass
+
+    def improve_best_trajectory(self):
+        # TODO(HANYU): iteratively improve path and speed trajectory
+        self.improve_path()
+        self.improve_speed()
 
     """improve trajectory"""
 
@@ -360,3 +331,21 @@ class LatticePlanner:
 
     def improve_speed(self):
         pass
+
+    def find_prec_veh(self):
+        # if self.prec_veh is None else distance(self.point_location(), self.prec_veh.point_location())
+        min_distance = 100000
+        for segment in self.cav.road.segments:
+            for lane_vehicles in segment.vehicles:
+                for vehicle in lane_vehicles:
+                    if abs(vehicle.state.y - self.state.y) >= self.road.lane_width / 2:
+                        continue
+                    if vehicle is self:
+                        continue
+                    # distance(self.point_location(), vehicle.point_location())
+                    dis = vehicle.state.x - self.cav.state.x
+                    if dis > 0 and dis < min_distance:
+                        self.cav.prec_veh = vehicle
+                        min_distance = dis
+
+        return self.cav.prec_veh

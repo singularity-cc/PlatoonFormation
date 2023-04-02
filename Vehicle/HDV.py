@@ -15,6 +15,9 @@ class HDV(Vehicle):
 
         self.category = "HDV"
         self.energy_consumption = 0
+        self.car_following_controller = None
+        self.lane_change_controller = None
+        self.longitudinal_vehicle_plant = None
 
     def add_car_following_controller(self, car_following_controller):
         self.car_following_controller = car_following_controller
@@ -26,13 +29,16 @@ class HDV(Vehicle):
         self.longitudinal_vehicle_plant = longitudinal_vehicle_plant
 
     def update_car_following_control(self):
-        self.car_following_controller.update()
+        if self.car_following_controller is not None:
+            self.car_following_controller.update()
 
     def update_lane_change_control(self):
-        self.lane_change_controller.update()
+        if self.lane_change_controller is not None:
+            self.lane_change_controller.update()
 
     def update_vehicle_state(self):
-        self.longitudinal_vehicle_plant.update()
+        if self.longitudinal_vehicle_plant is not None:
+            self.longitudinal_vehicle_plant.update()
 
     """******************************************  Interface: First Level Main Functions  **********************************************************"""
     # update vehicle information
@@ -44,6 +50,8 @@ class HDV(Vehicle):
         self.update_vehicle_state()
         self.update_consumption()
         # self.record_state()
+        if self.simulation.count % 100 == 0:
+            self.update_labels()
 
     def update_consumption(self):
         self.energy_consumption += self.energy_consumption_model()

@@ -7,7 +7,7 @@ class Road:
         self.num_lanes = num_lanes
         self.init_heading = init_heading
 
-        self.init_segments(waypoints, init_heading, num_lanes)  
+        self.init_segments(waypoints, init_heading)  
 
         self.init_traffic_flow_summary()
 
@@ -17,13 +17,13 @@ class Road:
         self.traffic_speed = 0
         self.traffic_density = 0
     
-    def init_segments(self, waypoints, init_heading, num_lanes):
+    def init_segments(self, waypoints, init_heading):
         start_heading = init_heading
         
         for i in range(len(waypoints) - 1):
             start = waypoints[i]
             end = waypoints[i + 1]
-            segment = Segment(start, end, start_heading, num_lanes)
+            segment = Segment(start, end, start_heading, self.num_lanes, self.lane_width)
             self.segments.append(segment)
             # update the heading of the start waypoint for the next segment
             start_heading = segment.end.heading

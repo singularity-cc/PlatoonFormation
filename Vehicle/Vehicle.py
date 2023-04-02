@@ -54,6 +54,8 @@ class Vehicle:
         self.travel_distance = 0
 
         self.energy_consumption = 0
+        
+        self.prec_veh = None
 
     def __str__(self):
         return f"id: {self.permanent_id}, (x, y): ({self.state.x}, {self.state.y}), v: {self.state.v}"
@@ -64,6 +66,21 @@ class Vehicle:
 
     def update_labels(self):
         # TODO(Hanyu): update the labels of the vehicle including lane_idx, id, segment, road.
+        pass
+        
+        #TODO: extend to more road senarios
+        self.travel_distance = self.state.x
+        
+        num_lanes = self.segment.num_lanes
+        lane_width = self.segment.lane_width
+        lane_lower_y = self.segment.start.y + num_lanes / 2.0 * lane_width
+        ego_y = self.state.y
+
+        ego_lane = (-ego_y + lane_lower_y) // lane_width
+        self.segment.remove_vehicle(self)
+        self.lane = int(ego_lane)
+        self.segment.add_vehicle(self)
+        
         pass
 
     def update_consumption(self):
@@ -102,4 +119,19 @@ class Vehicle:
     def point_location(self):
         """obtain vehicle's point location"""
         return Point(self.state.x, self.state.y)
-    pass
+
+    def find_prec_veh(self):
+        min_distance = 100000 # if self.prec_veh is None else distance(self.point_location(), self.prec_veh.point_location())
+        for segment in self.road.segments:
+            for lane_vehicles in segment.vehicles:
+                for vehicle in lane_vehicles:
+                    if abs(vehicle.state.y - self.state.y) >= self.road.lane_width / 2:
+                        continue
+                    if vehicle is self:
+                        continue
+                    dis = vehicle.state.x - self.state.x # distance(self.point_location(), vehicle.point_location())
+                    if dis > 0 and dis < min_distance:
+                        self.prec_veh = vehicle
+                        min_distance = dis
+
+        return self.prec_veh

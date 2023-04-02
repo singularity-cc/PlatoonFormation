@@ -24,7 +24,7 @@ class LongitudinalVehiclePlant:
         # line_segment = LineSegment(vehicle_current_point, vehicle_previous_point)
 
         if distance(vehicle_current_point, segment_end_point) < self.vehicle.road.lane_width * self.vehicle.road.num_lanes:
-            self.vehicle.segment.remove_vehicle(self)
+            self.vehicle.segment.remove_vehicle(self.vehicle)
             self.vehicle.segment.reorganize_vehicles_in_lane(self.vehicle.lane)
 
         # if line_segment.is_point_projection_in(segment_end_point):

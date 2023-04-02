@@ -22,7 +22,7 @@ class LonLatController:
         elif self.cav.state.v >= 20:
             self.k = 0.3
         elif self.cav.state.v >= 15:
-            self.k = 1
+            self.k = 0.7
         else:
             self.k = 2
 

@@ -20,12 +20,14 @@ class Simulation:
         self.road = road  # may extend to multiple roads in the future
         # may extend to multiple vehicle generators for different roads in the future
         self.generator = generator
+        # traffic generator
         self.platoon = platoon
 
         self.init_data_record()
         self.init_traffic_flow_summary()
 
     def init_traffic_flow_summary(self):
+        #TODO(hanyu): calucalte these
         self.energy_consumption = 0
         self.traffic_speed = 0
         self.traffic_flow = 0
@@ -119,6 +121,6 @@ class Simulation:
         dataframe = pd.DataFrame(self.data)
         date_time = datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
         writer = pd.ExcelWriter(
-            f"Traffic_recorded_{date_time}.xlsx", engine="xlsxwriter")
+            f"Experiments/Data/{date_time}.xlsx", engine="xlsxwriter")
         dataframe.to_excel(writer, sheet_name="Sheet1")
         writer.save()
