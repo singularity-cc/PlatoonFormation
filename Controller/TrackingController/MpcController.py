@@ -4,5 +4,3 @@ class MpcController:
 
     def update(self):
         pass
-
-    

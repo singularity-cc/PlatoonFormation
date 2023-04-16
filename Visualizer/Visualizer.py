@@ -54,7 +54,7 @@ class Visualizer:
         self.clock = pygame.time.Clock()
         pygame.font.init()
         self.text_font = pygame.font.SysFont('Lucida Console', 16)
-        self.text_veh_font = pygame.font.SysFont('Lucida Console', 8)
+        self.text_veh_font = pygame.font.SysFont('Lucida Console', 10)
         pygame.display.update()
 
     def on_execute(self):
@@ -235,7 +235,7 @@ class Visualizer:
         offset = (0, 2)
         x, y = (veh.state.x, veh.state.y)
         veh_state_text = self.text_veh_font.render(
-            f'lane={veh.lane}', False, sel)
+            f'lane: {veh.lane}; id: {veh.id}', False, color)
         veh_state_text_rect = veh_state_text.get_rect()
         veh_state_text_rect.center = [int(
             self.width/2+(x + self.offset[0] + offset[0])*self.zoom),

@@ -65,7 +65,7 @@ class Segment:
         """Reorganize all the vehicles in the target lane in the current segment by reassigning the vehicle id"""
         id = 0
         #TODO: extend to curvature road
-        self.vehicles[lane].sort(key=lambda veh: veh.travel_distance)
+        self.vehicles[lane].sort(key=lambda veh: veh.travel_distance, reverse=True)
         for vehicle in self.vehicles[lane]:
             vehicle.id = id
             id += 1

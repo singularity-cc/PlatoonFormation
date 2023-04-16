@@ -50,7 +50,7 @@ class HDV(Vehicle):
         self.update_vehicle_state()
         self.update_consumption()
         # self.record_state()
-        if self.simulation.count % 100 == 0:
+        if self.simulation.count % 50 == 0:
             self.update_labels()
 
     def update_consumption(self):

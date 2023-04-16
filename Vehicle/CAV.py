@@ -56,6 +56,11 @@ class CAV(Vehicle):
         # print(f"cav location is {self.state.x}, {self.state.y}")
         # print(f"cav lane is {self.lane}")
         # doing platooning control or not is also controlled by decider
+        
+        if self.simulation.count % 50 == 0:
+            # print(f"cav lane is {self.lane}")
+            self.update_labels()        
+
         if self.is_platooning == 2:
             # platoon formation is done, switch to platooning control
             self.update_platooning_control()
@@ -71,9 +76,7 @@ class CAV(Vehicle):
         self.update_control_command()
         # update CAV physical state
         self.update_state()
-        if self.simulation.count % 100 == 0:
-            print(f"cav lane is {self.lane}")
-            self.update_labels()
+
 
     def update_platooning_control(self):
         prec_veh = None

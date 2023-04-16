@@ -57,9 +57,9 @@ class LongitudinalVehiclePlant:
 
     def update_lane_and_id(self):
         """Update the HDV lane and id after lane change"""
-
-        self.vehicle.segment.update_vehicle_lane(
-            self.vehicle, self.vehicle.lane_change_turn_left)
+        pass
+        # self.vehicle.segment.update_vehicle_lane(
+        #     self.vehicle, self.vehicle.lane_change_turn_left)
 
     def update_position_in_lane_change(self):
         """Update the HDV position during lane change"""
