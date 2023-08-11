@@ -1,0 +1,13 @@
+\ Model mip1_copy
+\ LP format - for model browsing. Use MPS format to capture full model detail.
+Minimize
+ 
+Subject To
+ d_distance_to_cr: - d[31,0,1] + d_to_cr[31,0,1] = -0.09
+ density: d[31,0,1] = 0
+Bounds
+ d[31,0,1] free
+ d_to_cr[31,0,1] free
+Generals
+ d_to_cr[31,0,1]
+End

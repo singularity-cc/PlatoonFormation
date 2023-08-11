@@ -81,6 +81,7 @@ class Visualizer:
         # Handle quit events
         if event.type == pygame.QUIT:
             self.running = False
+            self.simulator.plot_vehicle_data()
 
         # Handle keyborard events
         elif event.type == pygame.KEYDOWN:
@@ -228,7 +229,7 @@ class Visualizer:
         size = (param.length, param.width)
         angle = np.pi * state.heading / 180.0
 
-        self.draw_vehicle_state(veh, color)
+        # self.draw_vehicle_state(veh, color)
         self.rotated_box(pos, size, angle, color=color)
 
     def draw_vehicle_state(self, veh, color):

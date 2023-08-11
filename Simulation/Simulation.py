@@ -8,6 +8,8 @@ from Platoon import *
 from BehaviorDecider import *
 from datetime import datetime
 
+import matplotlib.pyplot as plt
+
 
 class Simulation:
     """Simulation class: handle the entire simulation"""
@@ -28,7 +30,7 @@ class Simulation:
         self.init_traffic_flow_summary()
 
     def init_traffic_flow_summary(self):
-        #TODO(hanyu): calucalte these
+        # TODO(hanyu): calucalte these
         self.energy_consumption = 0
         self.traffic_speed = 0
         self.traffic_flow = 0
@@ -47,6 +49,9 @@ class Simulation:
         self.data_veh_x = []
         self.data_veh_y = []
         self.data_veh_distance = []
+
+        # data for plot vehicle trajectory
+        self.vehicles_data = {}
 
     def create_road(self, waypoints, init_heading=0.0, num_lanes=3, road_width=4):
         """Create one single road"""
@@ -89,15 +94,25 @@ class Simulation:
 
     def record(self):
         """Record the traffic simulation data for further analysis"""
-        if self.count % 100 != 0:
+        if self.count % 10 != 0:
             return
 
         for segment in self.road.segments:
             for lane in segment.vehicles:
                 for vehicle in lane:
+                    if vehicle.permanent_id not in self.vehicles_data.keys():
+                        # 4 lists to record t, x, y, v
+                        self.vehicles_data[vehicle.permanent_id] = [vehicle.category, [], [], [], []]
+                        
+                    self.vehicles_data[vehicle.permanent_id][1].append(self.t)
+                    self.vehicles_data[vehicle.permanent_id][2].append(vehicle.state.x)
+                    self.vehicles_data[vehicle.permanent_id][3].append(vehicle.state.y)
+                    self.vehicles_data[vehicle.permanent_id][4].append(vehicle.state.v)
+                    
                     self.record_vehicle(vehicle)
 
     def record_vehicle(self, vehicle):
+
         self.data_id.append(vehicle.permanent_id)
         self.data_time.append(self.t)
         self.data_veh_category.append(vehicle.category)
@@ -125,3 +140,43 @@ class Simulation:
             f"Experiments/Data/{date_time}.xlsx", engine="xlsxwriter")
         dataframe.to_excel(writer, sheet_name="Sheet1")
         writer.save()
+
+    def plot_vehicle_data(self):
+        # veh_data = self.vehicles_data[1]
+        # print(f"veh_data type is {type(veh_data)}")
+        # t = veh_data[0]
+        # x = veh_data[1]
+        # plt.plot(t, x)
+        fig, (ax1, ax2, ax3) = plt.subplots(3)
+        for veh_id in self.vehicles_data:
+            veh_data = self.vehicles_data[veh_id]
+            veh_category = veh_data[0]
+            t = veh_data[1]
+            x = veh_data[2]
+            y = veh_data[3]
+            v = veh_data[4]
+            
+            if veh_category is "HDV":
+                color = "black"
+                line_style = "--"
+            else:
+                color = "red"
+                line_style = "-"
+            ax1.plot(t, x,  color=color, linestyle=line_style)
+            ax1.set_xlabel("time (sec)")
+            ax1.set_ylabel("longitudinal distance x (m)")
+            
+            ax2.plot(t, y,  color=color, linestyle=line_style)
+            ax2.set_xlabel("time (sec)")
+            ax2.set_ylabel("lateral distance y (m)")
+            
+            ax3.plot(t, v,  color=color, linestyle=line_style)
+            ax3.set_xlabel("time (sec)")
+            ax3.set_ylabel("speed (m/s)")
+            
+            
+
+
+        plt.legend()
+        plt.show()
+    
